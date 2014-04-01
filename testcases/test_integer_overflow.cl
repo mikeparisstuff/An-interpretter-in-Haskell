@@ -1,6 +1,7 @@
-class Main {
+class Main inherits IO{
 
     main() : Object {
-        5/0
+        let i : Int <- 9*9*9*9*9*9*9*9*9*9*9*9*9*9*9*9 in
+        out_int(i)
     };
 };

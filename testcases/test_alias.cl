@@ -1,30 +1,39 @@
 class Main inherits IO{
 
     main() : Object {
-        let x : Int <- new Int,
-            y : Int in
+        let x : Dog <- new Dog,
+        y : Dog in
         {
-        	y <- x;
-        	y <- 5;
-            out_int(x);
-            out_string("\n");
-            out_int(y);
-            out_string("\n");
+            x.setName("Doggie\n");
+            y <- x;
+            y.bark();
+            y.setName("Yosarian\n");
+            x.bark();
+            x.print_ints();
+            y.print_ints();
         }
     };
 
-    blah() : Object {
-    	let d : Dog <- new Dog,
-        d2 : Dog <- d.get_self_t() in {
-        	out_string("Doggies");
-        }
-    };
 };
 
-class Dog {
-	get_self_t() : SELF_TYPE {
-		let d : Dog <- new Dog in {
-			d
-		}
-	};
+class Dog inherits Main {
+    name : String;
+    a : Int <- b + 3;
+    b : Int <- 5;
+    c : Int <- a + 4;
+    setName(n : String) : Object { name <- n };
+    bark() : Object { out_string(name) };
+    print_ints(): Object {
+        {
+            out_string("A: ");
+            out_int(a);
+            out_string("\n");
+            out_string("B: ");
+            out_int(b);
+            out_string("\n");
+            out_string("C: ");
+            out_int(c);
+            out_string("\n");
+        }
+    };
 };
