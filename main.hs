@@ -1,12 +1,20 @@
 import System.IO
 import Data.List as List
+import Debug.Trace
 
 type Type = String
 type Name = String
+type FormalName = String
+type MethodDefiner = String
 type LineNo = Int
+type MethodIdentifier = Identifier
+type TypeIdentifier = Identifier
 
-data Class = Class String [Attribute] deriving(Show)
-data Attribute = Attribute Name Type (Maybe Expr) deriving(Show)
+data Class = Class String [Feature] deriving(Show)
+data Feature = Attribute Name Type (Maybe Expr)
+        |   Method Name [FormalName] MethodDefiner Expr
+        deriving(Show)
+data Identifier = Identifier LineNo Name deriving(Show)
 data Expr = Integer LineNo Type Int
         |   Str LineNo Type String
         |   TrueBool LineNo Type
@@ -21,10 +29,22 @@ data Expr = Integer LineNo Type Int
         |   Divide LineNo Type Expr Expr
         |   Plus LineNo Type Expr Expr
         |   Minus LineNo Type Expr Expr
+        |   IdentExpr LineNo Type Identifier
+        |   New LineNo Type Identifier
+        |   Assign LineNo Type Identifier Expr
+        |   While LineNo Type Expr Expr
+        |   If LineNo Type Expr Expr Expr
+        |   Block LineNo Type [Expr]
+        |   SelfDispatch LineNo Type Identifier [Expr]
+        |   DynamicDispatch LineNo Type Expr MethodIdentifier [Expr]
+        |   StaticDispatch LineNo Type Expr TypeIdentifier MethodIdentifier [Expr]
+        |   Internal LineNo Type Name
     deriving (Show)
 
+data Program = Program LineNo [Class]
 
--- Read in the class map from .cl-type and create data structure
+
+---------------------------- Class Map ---------------------------------------------
 parse_cm [] = error "empty input file"
 parse_cm ("class_map": num_classes : tl) = 
     let nc = read num_classes :: Int 
@@ -47,6 +67,61 @@ parse_cm_attribute n xs = case xs of
     ("no_initializer" : attr_name : attr_type : tl) -> 
         let (attrs, rem_input) = parse_cm_attribute (n-1) tl
         in ((Attribute attr_name attr_type Nothing) : attrs, rem_input)
+
+------------------------ Implementation Map -----------------------------------------
+parse_imp_map [] = error "empty input file"
+parse_imp_map ("implementation_map" : num_classes : tl) =
+    let nc = read num_classes :: Int
+    in parse_imp_class nc tl
+-- We have to traverse throught the file until we find the imp_map
+parse_imp_map (hd:tl) = parse_imp_map tl
+
+parse_imp_class _ [] = error "empty class in imp map"
+parse_imp_class 0 _ = []
+parse_imp_class n (cname : num_methods : tl) =
+    let nm = read num_methods :: Int
+        (methods, rem_input) = parse_imp_methods nm tl
+    in (Class cname methods) : parse_imp_class (n-1) rem_input
+
+parse_imp_methods _ [] = error "empty method in implementation map"
+parse_imp_methods 0 rem_input = ([], rem_input)
+parse_imp_methods n xs = case xs of
+    (meth_name : num_formals : tl) -> 
+        let nf = read num_formals :: Int
+            (formals, rem_input) = parse_formals_list nf tl
+            (meth_owner : rem_input_2) = rem_input
+            (expr, rem_input_3) = parse_expr rem_input_2
+            (methods, fin_rem_input) = parse_imp_methods (n-1) rem_input_3
+        in ((Method meth_name formals meth_owner expr) : methods, fin_rem_input)
+
+parse_formals_list 0 xs = ([], xs)
+parse_formals_list n xs = case xs of
+    (formal_name : tl) -> 
+        let (formals, rem_input) = parse_formals_list (n-1) tl
+        in (formal_name : formals, rem_input)
+    x -> error "this should never happen in parse formals"
+
+--------------------------- Parent Map -------------------------------------------
+
+-- Makes and association list in the form [(subclass, superclass)]
+parse_parent_map [] = error "empty input file"
+parse_parent_map ("parent_map" : num_relations : tl) =
+    let num_rel = read num_relations :: Int
+        (relations, rem_lines) = parse_parent_map_relations num_rel tl
+    in relations
+parse_parent_map (hd:tl) = parse_parent_map tl
+
+parse_parent_map_relations 0 left = ([], left)
+parse_parent_map_relations n (child:parent:tl) = 
+    let (relations, rem_lines) = parse_parent_map_relations (n-1) tl
+    in ((child, parent) : relations, rem_lines)
+parse_parent_map_relations _ _ = error "this should not happen in parent map relations"
+
+-------------------------- Annotated Abstract Syntax tree ----------------------------
+
+
+
+------------------------ Expressions -------------------------------------------------
 
 parse_expr xs = case xs of
     -- Integer, String, and Bool
@@ -113,11 +188,89 @@ parse_expr xs = case xs of
             (expr1, rem_input_1) = parse_expr tl
             (expr2, rem_input_2) = parse_expr rem_input_1
         in ((Minus n expr_type expr1 expr2), rem_input_2)
-    
-    _ -> error "could not match class map expr"
+    -- Identifier, New, Assign
+    (line_no : expr_type : "identifier" : tl) ->
+        let n = read line_no :: Int
+            (ident, rem_input) = parse_identifier tl
+        in ((IdentExpr n expr_type ident), rem_input)
+    (line_no : expr_type : "new" : tl) ->
+        let n = read line_no :: Int
+            (ident, rem_input) = parse_identifier tl
+        in ((New n expr_type ident), rem_input)
+    (line_no : expr_type : "assign" : tl) ->
+        let n = read line_no :: Int
+            (ident, rem_input_1) = parse_identifier tl
+            (expr, rem_input_2) = parse_expr rem_input_1
+        in ((Assign n expr_type ident expr), rem_input_2)
+    -- While, If
+    (line_no : expr_type : "while" : tl) ->
+        let n = read line_no :: Int
+            (expr1, rem_input_1) = parse_expr tl
+            (expr2, rem_input_2) = parse_expr rem_input_1
+        in ((While n expr_type expr1 expr2), rem_input_2)
+    (line_no : expr_type : "if" : tl) ->
+        let n = read line_no :: Int
+            (expr1, rem_input_1) = parse_expr tl
+            (expr2, rem_input_2) = parse_expr rem_input_1
+            (expr3, rem_input_3) = parse_expr rem_input_2
+        in ((If n expr_type expr1 expr2 expr3), rem_input_3)
+    -- Block
+    (line_no : expr_type : "block" : num_exprs : tl) ->
+        let n = read line_no :: Int
+            n_exprs = read num_exprs :: Int
+            (expr_list, rem_input) = parse_expr_list n_exprs tl
+        in ((Block n expr_type expr_list), rem_input)
+    -- Dispatch
+    (line_no : expr_type : "self_dispatch" : tl) ->
+        let n = read line_no :: Int
+            (ident, rem_input) = parse_identifier tl
+            (num_exprs : rem_input_1) = rem_input
+            n_exprs = read num_exprs :: Int
+            (expr_list, rem_input_2) = parse_expr_list n_exprs rem_input_1
+        in ((SelfDispatch n expr_type ident expr_list), rem_input_2)
+    (line_no : expr_type : "dynamic_dispatch" : tl) ->
+        let n = read line_no :: Int
+            (expr, rem_input_1) = parse_expr tl
+            (ident, rem_input_2) = parse_identifier rem_input_1
+            (num_exprs : rem_input_3) = rem_input_2
+            n_exprs = read num_exprs :: Int
+            (expr_list, rem_input_4) = parse_expr_list n_exprs rem_input_3
+        in ((DynamicDispatch n expr_type expr ident expr_list), rem_input_4)
+    (line_no : expr_type : "static_dispatch" : tl) ->
+        let n = read line_no :: Int
+            (expr, rem_input_1) = parse_expr tl
+            (ident1, rem_input_2) = parse_identifier rem_input_1
+            (ident2, rem_input_3) = parse_identifier rem_input_2
+            (num_exprs : rem_input_4) = rem_input_3
+            n_exprs = read num_exprs :: Int
+            (expr_list, rem_input_5) = parse_expr_list n_exprs rem_input_4
+        in ((StaticDispatch n expr_type expr ident1 ident2 expr_list), rem_input_5)
+    -- Internal
+    (line_no : expr_type : "internal" : class_dot_method : tl) ->
+        let n = read line_no :: Int
+        in ((Internal n expr_type class_dot_method), tl)
+    _ -> error "could not match expr"
+
+parse_expr_list 0 tl = ([], tl)
+parse_expr_list n tl =
+    let (expr, rem_input) = parse_expr tl
+        (expr_list, rem_input_2) = parse_expr_list (n-1) rem_input
+    in ( (expr : expr_list), rem_input_2)
+
+parse_identifier (line_no : name : tl) = 
+    let n = read line_no :: Int
+    in ((Identifier n name), tl)
 
 -- Main Execution
 main = do
-	contents <- readFile "simple.cl-type"
-	putStrLn $ show $ parse_cm $ lines contents
+    contents <- readFile "simple.cl-type"
+    let class_map = parse_cm $ lines contents
+        imp_map = parse_imp_map $ lines contents
+        parent_map = parse_parent_map $ lines contents
+    putStrLn "Class Map:"
+    putStrLn $ show $ class_map
+    putStrLn "Implementation Map:"
+    putStrLn $ show $ imp_map
+    putStrLn "Parent Map:"
+    putStrLn $ show $ parent_map
 	--putStr contents
