@@ -7,13 +7,17 @@ type Name = String
 type FormalName = String
 type MethodDefiner = String
 type LineNo = Int
+type MethodDefinerOrType = Identifier
 type MethodIdentifier = Identifier
 type TypeIdentifier = Identifier
+type NameIdentifier = Identifier
 
-data Class = Class String [Feature] deriving(Show)
-data Feature = Attribute Name Type (Maybe Expr)
-        |   Method Name [FormalName] MethodDefiner Expr
+data Class = Class (Maybe LineNo) String [Feature] (Maybe TypeIdentifier) deriving(Show)
+data Feature = Attribute NameIdentifier TypeIdentifier (Maybe Expr)
+        |   Method NameIdentifier [FormalName] MethodDefinerOrType Expr
+        |   AstMethod NameIdentifier [Formal] MethodDefinerOrType Expr
         deriving(Show)
+data Formal = Formal Identifier Identifier deriving(Show)
 data Identifier = Identifier LineNo Name deriving(Show)
 data Expr = Integer LineNo Type Int
         |   Str LineNo Type String
@@ -41,7 +45,7 @@ data Expr = Integer LineNo Type Int
         |   Internal LineNo Type Name
     deriving (Show)
 
-data Program = Program LineNo [Class]
+data Program = Program [Class] deriving(Show)
 
 
 ---------------------------- Class Map ---------------------------------------------
@@ -55,7 +59,7 @@ parse_cm_class 0 _  = []
 parse_cm_class n (cname : num_attr : tl) =
     let na = read num_attr :: Int
         (attributes, rem_input) = parse_cm_attribute na tl
-    in (Class cname attributes) : parse_cm_class (n-1) rem_input
+    in (Class Nothing cname attributes Nothing) : parse_cm_class (n-1) rem_input
 
 parse_cm_attribute _ [] = error "empty attribute in class map"
 parse_cm_attribute 0 rem_input = ([], rem_input)
@@ -63,10 +67,10 @@ parse_cm_attribute n xs = case xs of
     ("initializer" : attr_name : attr_type : tl) -> 
         let (expr, rem_input) = parse_expr tl
             (attrs, fin_rem_input) = parse_cm_attribute (n-1) rem_input
-        in ((Attribute attr_name attr_type (Just expr) ) : attrs, fin_rem_input)
+        in ((Attribute (Identifier 0 attr_name) (Identifier 0 attr_type) (Just expr) ) : attrs, fin_rem_input)
     ("no_initializer" : attr_name : attr_type : tl) -> 
         let (attrs, rem_input) = parse_cm_attribute (n-1) tl
-        in ((Attribute attr_name attr_type Nothing) : attrs, rem_input)
+        in ((Attribute (Identifier 0 attr_name) (Identifier 0 attr_type) Nothing) : attrs, rem_input)
 
 ------------------------ Implementation Map -----------------------------------------
 parse_imp_map [] = error "empty input file"
@@ -81,7 +85,7 @@ parse_imp_class 0 _ = []
 parse_imp_class n (cname : num_methods : tl) =
     let nm = read num_methods :: Int
         (methods, rem_input) = parse_imp_methods nm tl
-    in (Class cname methods) : parse_imp_class (n-1) rem_input
+    in (Class Nothing cname methods Nothing) : parse_imp_class (n-1) rem_input
 
 parse_imp_methods _ [] = error "empty method in implementation map"
 parse_imp_methods 0 rem_input = ([], rem_input)
@@ -92,7 +96,7 @@ parse_imp_methods n xs = case xs of
             (meth_owner : rem_input_2) = rem_input
             (expr, rem_input_3) = parse_expr rem_input_2
             (methods, fin_rem_input) = parse_imp_methods (n-1) rem_input_3
-        in ((Method meth_name formals meth_owner expr) : methods, fin_rem_input)
+        in ((Method (Identifier 0 meth_name) formals (Identifier 0 meth_owner) expr) : methods, fin_rem_input)
 
 parse_formals_list 0 xs = ([], xs)
 parse_formals_list n xs = case xs of
@@ -104,12 +108,13 @@ parse_formals_list n xs = case xs of
 --------------------------- Parent Map -------------------------------------------
 
 -- Makes and association list in the form [(subclass, superclass)]
-parse_parent_map [] = error "empty input file"
-parse_parent_map ("parent_map" : num_relations : tl) =
+parse_parent_map_and_ast [] = error "empty input file"
+parse_parent_map_and_ast ("parent_map" : num_relations : tl) =
     let num_rel = read num_relations :: Int
         (relations, rem_lines) = parse_parent_map_relations num_rel tl
-    in relations
-parse_parent_map (hd:tl) = parse_parent_map tl
+        ast = parse_ast rem_lines
+    in (relations, ast)
+parse_parent_map_and_ast (hd:tl) = parse_parent_map_and_ast tl
 
 parse_parent_map_relations 0 left = ([], left)
 parse_parent_map_relations n (child:parent:tl) = 
@@ -119,8 +124,55 @@ parse_parent_map_relations _ _ = error "this should not happen in parent map rel
 
 -------------------------- Annotated Abstract Syntax tree ----------------------------
 
+parse_ast [] = error "annotated ast not in input"
+parse_ast (num_classes : tl) =
+    let n = read num_classes :: Int
+        classes = parse_ast_classes n tl
+    in Program classes
 
+parse_ast_classes 0 _ = []
+parse_ast_classes n (line_no : cname : "inherits" : parent_line_no : parent_name : num_feats : tl) = 
+    let ln = read line_no :: Int
+        pln = read parent_line_no :: Int
+        nf = read num_feats :: Int
+        (features, rem_lines) = parse_ast_features nf tl
+        classes = parse_ast_classes (n-1) rem_lines
+    in ( Class (Just ln) cname features (Just (Identifier pln parent_name)) : classes )
+parse_ast_classes n (line_no : cname : "no_inherits" : num_feats : tl) =
+    let ln = read line_no :: Int
+        nf = read num_feats :: Int
+        (features, rem_lines) = parse_ast_features nf tl
+        classes = parse_ast_classes (n-1) rem_lines
+    in ((Class (Just ln) cname features Nothing) : classes)
 
+parse_ast_features 0 last = ([], last)
+parse_ast_features n ("attribute_no_init" : line_no : fname : type_line_no : type_name : tl) = 
+    let ln = read line_no :: Int
+        tln = read type_line_no :: Int
+        (features, rem_lines) = parse_ast_features (n-1) tl
+    in ((Attribute (Identifier ln fname) (Identifier tln type_name) Nothing ) : features, rem_lines)
+parse_ast_features n ("attribute_init" : line_no : fname : type_line_no : type_name : tl) = 
+    let ln = read line_no :: Int
+        tln = read type_line_no :: Int
+        (expr, rem_lines) = parse_expr tl
+        (features, rem_lines_2) = parse_ast_features (n-1) rem_lines
+    in ((Attribute (Identifier ln fname) (Identifier tln type_name) (Just expr)) : features, rem_lines_2)
+parse_ast_features n ("method" : line_no : fname : num_formals : tl) =
+    let ln = read line_no :: Int
+        nf = read num_formals :: Int
+        (formals, rem_lines) = parse_formal_identifiers nf tl
+        (type_line_no : type_name : rem_lines_2) = rem_lines
+        tln = read type_line_no :: Int
+        (expr, rem_lines_3) = parse_expr rem_lines_2
+        (features, rem_lines_4) = parse_ast_features (n-1) rem_lines_3
+    in ((AstMethod (Identifier ln fname) formals (Identifier tln type_name) expr) : features, rem_lines_4)
+
+parse_formal_identifiers 0 last = ([], last)
+parse_formal_identifiers n (line_no : fname : type_line_no : type_name : tl) =
+    let ln = read line_no :: Int
+        tln = read type_line_no :: Int
+        (formals, rem_lines) = parse_formal_identifiers (n-1) tl
+    in ( (Formal (Identifier ln fname) (Identifier tln type_name)) : formals, rem_lines) 
 ------------------------ Expressions -------------------------------------------------
 
 parse_expr xs = case xs of
@@ -266,11 +318,13 @@ main = do
     contents <- readFile "simple.cl-type"
     let class_map = parse_cm $ lines contents
         imp_map = parse_imp_map $ lines contents
-        parent_map = parse_parent_map $ lines contents
+        (parent_map, ast) = parse_parent_map_and_ast $ lines contents
     putStrLn "Class Map:"
     putStrLn $ show $ class_map
     putStrLn "Implementation Map:"
     putStrLn $ show $ imp_map
     putStrLn "Parent Map:"
     putStrLn $ show $ parent_map
+    putStrLn "Annotated AST:"
+    putStrLn $ show $ ast
 	--putStr contents
