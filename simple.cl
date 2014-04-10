@@ -23,6 +23,9 @@ class Main inherits IO {
     t : Object <- { self.copy(); };
     meth( a : Int ) : Int { a };
     main() : Object {
-        abort()
+        let x1 : Int <- 4,
+            y1 : String,
+            b1 : Int <- h + i
+        in out_string(x)
     };
 };

@@ -44,8 +44,13 @@ data Expr = Integer LineNo Type Int
         |   SelfDispatch LineNo Type Identifier [Expr]
         |   DynamicDispatch LineNo Type Expr MethodIdentifier [Expr]
         |   StaticDispatch LineNo Type Expr TypeIdentifier MethodIdentifier [Expr]
+        |   Let LineNo Type [LetBinding] Expr
+        |   Case LineNo Type Expr [CaseElement] 
         |   Internal LineNo Type Name
     deriving (Show)
+
+data LetBinding = LetBinding NameIdentifier TypeIdentifier (Maybe Expr) deriving(Show)
+data CaseElement = CaseElement NameIdentifier TypeIdentifier Expr deriving(Show)
 
 data Program = Program [Class] deriving(Show)
 
@@ -304,7 +309,41 @@ parse_expr xs = case xs of
     (line_no : expr_type : "internal" : class_dot_method : tl) ->
         let n = read line_no :: Int
         in ((Internal n expr_type class_dot_method), tl)
+    -- Let and Case
+    (line_no : expr_type : "let" : num_bindings : tl) ->
+        let n = read line_no :: Int
+            nb = read num_bindings :: Int
+            (bindings, rem_input) = parse_binding_list nb tl
+            (expr, rem_input_2) = parse_expr rem_input
+        in ( (Let n expr_type bindings expr), rem_input_2 )
+    (line_no : expr_type : "case" : num_elems : tl) ->
+        let ln = read line_no :: Int
+            ne = read num_elems :: Int
+            (expr, rem_input) = parse_expr tl
+            (case_elems, rem_input_2) = parse_case_elements ne rem_input
+        in ( (Case ln expr_type expr case_elems), rem_input_2)
     _ -> error "could not match expr"
+
+parse_case_elements 0 tl = ([], tl)
+parse_case_elements n (var_ln : var_name : type_ln : type_name : tl) = 
+    let ln = read var_ln :: Int
+        tln = read type_ln :: Int
+        (expr, rem_input) = parse_expr tl
+        (elems, rem_input_2) = parse_case_elements (n-1) rem_input
+    in ( (CaseElement (Identifier ln var_name) (Identifier tln type_name) expr) : elems, rem_input_2)
+
+parse_binding_list 0 tl = ([], tl)
+parse_binding_list n ("let_binding_no_init" : var_ln : var_name : type_ln : type_name : tl) =
+    let ln = read var_ln :: Int
+        tln = read type_ln :: Int
+        (binding_list, rem_input) = parse_binding_list (n-1) tl
+    in ( (LetBinding (Identifier ln var_name) (Identifier tln type_name) Nothing) : binding_list, rem_input)
+parse_binding_list n ("let_binding_init" : var_ln : var_name : type_ln : type_name : tl) = 
+    let ln = read var_ln :: Int
+        tln = read type_ln :: Int
+        (expr, rem_input) = parse_expr tl
+        (binding_list, rem_input_2) = parse_binding_list (n-1) rem_input
+    in ( (LetBinding (Identifier ln var_name) (Identifier tln type_name) (Just expr)) : binding_list, rem_input_2)
 
 parse_expr_list 0 tl = ([], tl)
 parse_expr_list n tl =
