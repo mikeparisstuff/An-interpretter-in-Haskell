@@ -1,5 +1,5 @@
 import System.IO
-import Data.List as List
+import System.Environment
 import Debug.Trace
 
 type Type = String
@@ -318,16 +318,20 @@ parse_identifier (line_no : name : tl) =
 
 -- Main Execution
 main = do
-    contents <- readFile "simple.cl-type"
-    let class_map = parse_cm $ lines contents
-        imp_map = parse_imp_map $ lines contents
-        (parent_map, ast) = parse_parent_map_and_ast $ lines contents
-    putStrLn "Class Map:"
-    putStrLn $ show $ class_map
-    putStrLn "\nImplementation Map:"
-    putStrLn $ show $ imp_map
-    putStrLn "\nParent Map:"
-    putStrLn $ show $ parent_map
-    putStrLn "\nAnnotated AST:"
-    putStrLn $ show $ ast
-	--putStr contents
+    args <- getArgs
+    if length args == 0 then
+        error "Please supply the .cl-type file as the command line argument"
+    else do
+        contents <- readFile (args !! 0)
+        let class_map = parse_cm $ lines contents
+            imp_map = parse_imp_map $ lines contents
+            (parent_map, ast) = parse_parent_map_and_ast $ lines contents
+        putStrLn "Class Map:"
+        putStrLn $ show $ class_map
+        putStrLn "\nImplementation Map:"
+        putStrLn $ show $ imp_map
+        putStrLn "\nParent Map:"
+        putStrLn $ show $ parent_map
+        putStrLn "\nAnnotated AST:"
+        putStrLn $ show $ ast
+    	--putStr contents
