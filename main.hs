@@ -175,6 +175,7 @@ parse_formal_identifiers n (line_no : fname : type_line_no : type_name : tl) =
         tln = read type_line_no :: Int
         (formals, rem_lines) = parse_formal_identifiers (n-1) tl
     in ( (Formal (Identifier ln fname) (Identifier tln type_name)) : formals, rem_lines) 
+
 ------------------------ Expressions -------------------------------------------------
 
 parse_expr xs = case xs of
@@ -323,10 +324,10 @@ main = do
         (parent_map, ast) = parse_parent_map_and_ast $ lines contents
     putStrLn "Class Map:"
     putStrLn $ show $ class_map
-    putStrLn "Implementation Map:"
+    putStrLn "\nImplementation Map:"
     putStrLn $ show $ imp_map
-    putStrLn "Parent Map:"
+    putStrLn "\nParent Map:"
     putStrLn $ show $ parent_map
-    putStrLn "Annotated AST:"
+    putStrLn "\nAnnotated AST:"
     putStrLn $ show $ ast
 	--putStr contents
