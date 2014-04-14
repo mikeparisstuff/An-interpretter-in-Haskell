@@ -1,6 +1,9 @@
 import System.IO
 import System.Environment
 import Debug.Trace
+import Data.List (find)
+import Data.Map (Map)
+import qualified Data.Map as Map
 
 type Type = String
 type Name = String
@@ -11,6 +14,7 @@ type MethodType = Identifier
 type MethodIdentifier = Identifier
 type TypeIdentifier = Identifier
 type NameIdentifier = Identifier
+
 
 data Class = Class String [Feature]
         |   AstClass LineNo String [Feature] (Maybe TypeIdentifier) deriving(Show)
@@ -53,6 +57,24 @@ data LetBinding = LetBinding NameIdentifier TypeIdentifier (Maybe Expr) deriving
 data CaseElement = CaseElement NameIdentifier TypeIdentifier Expr deriving(Show)
 
 data Program = Program [Class] deriving(Show)
+
+------- Interpreter types -------
+type Location = Int
+
+type Store = Map Location Value
+type Environment = Map Name Location
+
+type CoolBool = String
+type CoolString = Int String
+type CoolInteger = Int
+    -- change me
+type Object = String
+
+data Value = CoolString 
+        | CoolBool 
+        | CoolInteger
+        | Object
+
 
 
 ---------------------------- Class Map ---------------------------------------------
@@ -355,6 +377,32 @@ parse_identifier (line_no : name : tl) =
     let n = read line_no :: Int
     in ((Identifier n name), tl)
 
+------------------------------- Interpreter Functions ---------------------------------
+getMeth :: [Class] -> String -> String -> Expr
+getMeth imp_map clas_name meth_name = 
+    let (Just (Class name feats)) = find (\(Class name _)  -> name == clas_name) imp_map
+        (Just (Method _ _ _ expr)) = find (\(Method name _ _ _) -> name == meth_name) feats in
+    expr
+    
+
+getClass :: [Class] -> String -> Class
+getClass class_map name = 
+    let (Just clas) = find (\(Class cname _) -> cname == name) class_map in
+    clas
+
+
+interpret :: (Class, Store, Environment) -> expr -> (Class, Store, Environment)
+interpret (so, sto, env) expr = case expr of 
+        (StaticDispatch _ typ expr typeI methodI params) -> 
+            (so, sto, env)
+        (New _ typ _) ->
+            (so, sto, env)
+        _ -> 
+            -- This should eventually return errors
+            (so, sto, env)
+    
+
+
 -- Main Execution
 main = do
     args <- getArgs
@@ -373,4 +421,14 @@ main = do
         putStrLn $ show $ parent_map
         putStrLn "\nAnnotated AST:"
         putStrLn $ show $ ast
-    	--putStr contents
+        
+        putStrLn "\nExecution:"
+        
+        let main = getClass class_map "Main"
+            (so, sto, env) = interpret (main, Map.empty, Map.empty) (New 0 "Main" (Identifier 0 "Main"))
+            main_meth = getMeth imp_map "Main" "main" in
+            interpret (so, sto, env) main_meth
+        
+
+
+
