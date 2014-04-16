@@ -404,37 +404,88 @@ default_value typ = case typ of
     "Bool" -> CoolBool False
     _     -> Void
 
+-- unpacks a let binding to extract an expression
+-- TODO fix case of no expr
+unpackLetBind :: LetBinding -> (Name, Expr)
+unpackLetBind letbind = 
+         let (LetBinding (Identifier _ name) typ maybeExpr) = letbind in
+            case maybeExpr of 
+                Just expr -> (name, expr)
+                -- REMOVE
+                Nothing   -> (name, Integer 6 "Int" 6)
+                
+
+
 
 interpret :: (ClassMap, ImpMap, ParentMap) -> (Value, Store, Environment) -> Expr -> (Value, Store)
-interpret (class_map, imp_map, parent_map) (so, store, env) expr = do
-    let interpret' = interpret (class_map, imp_map, parent_map) in
-        case expr of
-            --(StaticDispatch _ typ expr typeI methodI params) -> 
-            --    (CoolInt 7, store)
-            (New _ typ _) ->
-                let t0 = case typ of 
-                            "SELF_TYPE" -> let (Object x _) = so in x
-                            t -> t 
-                    (Class name feat_list) = getClass class_map t0
-                    orig_l = newloc store
-                    ls = [orig_l .. (orig_l + (length feat_list) - 1)]
-                    assoc_l = zip [var | (Attribute var _ _) <- feat_list] ls
-                    -- assoc_t holds association list from var -> type name
-                    assoc_t = zip [var | (Attribute var _ _) <- feat_list] [typ | (Attribute _ typ _) <- feat_list]
-                    v1 = Object t0 (Map.fromList assoc_l)
-                    -- Update store here
-                    lookup_type var = case (List.lookup var assoc_t) of
-                        Just s -> s
-                        Nothing -> error "We should not be looking up the type of a non existent variable"
-                    store2 = foldl (\a (var, li) -> Map.insert li (default_value (lookup_type var)) a) store assoc_l
-                    -- We now need to initialize the attributes with their respective expr
-                in
+interpret (class_map, imp_map, parent_map) (so, store, env) expr = 
+    let interpret' = interpret (class_map, imp_map, parent_map) 
+    in
+    case expr of
+        --(StaticDispatch _ typ expr typeI methodI params) -> 
+        --    (CoolInt 7, store)
+        (New _ typ _) ->
+            let t0 = case typ of 
+                        "SELF_TYPE" -> let (Object x _) = so in x
+                        t -> t 
+                (Class name feat_list) = getClass class_map t0
+                orig_l = newloc store
+                ls = [orig_l .. (orig_l + (length feat_list) - 1)]
+                -- assoc_l is [(name, location), ..]
+                assoc_l = zip [var | (Attribute var _ _) <- feat_list] ls
+                -- assoc_t holds association list from var -> type name
+                assoc_t = zip [var | (Attribute var _ _) <- feat_list] [typ | (Attribute _ typ _) <- feat_list]
+                v1 = Object t0 (Map.fromList assoc_l)
+                -- Update store here
+                lookup_type var = case (List.lookup var assoc_t) of
+                    Just s -> s
+                    Nothing -> error "We should not be looking up the type of a non existent variable"
+                store2 = foldl (\a (var, li) -> Map.insert li (default_value (lookup_type var)) a) store assoc_l
+                -- We now need to initialize the attributes with their respective expr
+                -- our goal is a set of expressions that modify attrs in scope
+                init_feat_list = filter (\(Attribute _ _ e) -> case e of 
+                                                                (Just e) -> True
+                                                                Nothing -> False
+                                        ) feat_list
+                iD ln name = Identifier ln name
+                assign_exprs = [Assign 0 t (iD 0 name) e | (Attribute name t (Just e)) <- init_feat_list]
+                env' = Map.fromList assoc_l
+                -- function to pass to store
+                threadStore :: (Value, Environment) -> (Value, Store) -> Expr -> (Value, Store)
+                threadStore (so', env') (_, store') expr = 
+                        interpret' (so', store', env') expr
+                threadStore' = threadStore (v1, env')
+                -- Actual threading of the object store
+                (v2, store3) = foldl threadStore' (Void, store2) assign_exprs
+                --store3 = 
+            in
+            -- Conclusion
+            (v1, store3)
 
-                    (CoolInt 5, (Map.empty))
-            _ -> 
-                -- This should eventually return errors
-                (CoolInt 10, store)
-    
+        (Let _ typ letBinds e2) ->
+            -- TODO does not handle multiple lets
+            -- deals with let bindings first
+            let (id, e1) = unpackLetBind $ head letBinds
+            -- operational semantics
+                (v1, store2) = interpret' (so, store, env) e1
+                loc = newloc store2
+                store3 = Map.insert loc v1 store2
+                env' = Map.insert id loc env
+                (v2, store4) = interpret' (so, store3, env') e2
+            in
+            -- conclusion
+            (v2, store4)
+
+        (Assign _ typ (Identifier _ name) expr) -> 
+            let (v1, store1) = interpret' (so, store, env) expr
+                (Just loc) = Map.lookup name env
+                store3 = Map.insert loc v1 store1
+            in
+            (v1, store3)
+        _ -> 
+            -- This should eventually return errors
+            (CoolInt 10, store)
+
 
 
 -- Main Execution
@@ -447,6 +498,7 @@ main = do
         let class_map = parse_cm $ lines contents
             imp_map = parse_imp_map $ lines contents
             (parent_map, ast) = parse_parent_map_and_ast $ lines contents
+        in
         putStrLn "Class Map:"
         putStrLn $ show $ class_map
         putStrLn "\nImplementation Map:"
@@ -458,13 +510,12 @@ main = do
         
         putStrLn "\nExecution:"
 
-        let m = Object "Main" Map.empty in
-            case m of 
-                (Object typ map) -> do
-                    let m = Map.insert "x" 6 map in 
-                        putStrLn $ show m
-                _ -> putStrLn "Didn't match"
-        
+       -- let  _null = Object "NULL" Map.empty 
+       --      newM = New 0 "Main" (Identifier 0 "")
+       --      curried = (class_map, imp_map, parent_map)
+       --      interpret curried (_null, Map.empty, Map.empty) newM
+       -- in
+            putStrLn "\nBlah"
         --let main = getClass class_map "Main"
         --    (so, sto, env) = interpret (main, Map.empty, Map.empty) (New 0 "Main" (Identifier 0 "Main"))
         --    main_meth = getMeth imp_map "Main" "main" in
