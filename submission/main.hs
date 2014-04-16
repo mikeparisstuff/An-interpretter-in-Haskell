@@ -1,9 +1,6 @@
 import System.IO
 import System.Environment
 import Debug.Trace
-import Data.List (find)
-import Data.Map (Map)
-import qualified Data.Map as Map
 
 type Type = String
 type Name = String
@@ -14,9 +11,6 @@ type MethodType = Identifier
 type MethodIdentifier = Identifier
 type TypeIdentifier = Identifier
 type NameIdentifier = Identifier
-type Child = String
-type Parent = String
-
 
 data Class = Class String [Feature]
         |   AstClass LineNo String [Feature] (Maybe TypeIdentifier) deriving(Show)
@@ -59,22 +53,6 @@ data LetBinding = LetBinding NameIdentifier TypeIdentifier (Maybe Expr) deriving
 data CaseElement = CaseElement NameIdentifier TypeIdentifier Expr deriving(Show)
 
 data Program = Program [Class] deriving(Show)
-
-type ClassMap = [Class]
-type ImpMap = [Class]
-type ParentMap = [(Child, Parent)]
-
-------- Interpreter types -------
-type Location = Int
-
-type Store = Map Location Value
-type Environment = Map Name Location
-
-data Value = CoolBool Bool
-        | CoolInt Int
-        | CoolString Int String
-        | Object Type (Map Name Location)
-        deriving (Show)
 
 
 ---------------------------- Class Map ---------------------------------------------
@@ -377,84 +355,23 @@ parse_identifier (line_no : name : tl) =
     let n = read line_no :: Int
     in ((Identifier n name), tl)
 
-------------------------------- Interpreter Functions ---------------------------------
-getMeth :: ImpMap -> String -> String -> Expr
-getMeth imp_map clas_name meth_name = 
-    let (Just (Class name feats)) = find (\(Class name _)  -> name == clas_name) imp_map
-        (Just (Method _ _ _ expr)) = find (\(Method name _ _ _) -> name == meth_name) feats in
-    expr
-    
-getClass :: ClassMap -> String -> Class
-getClass class_map name = 
-    let (Just clas) = find (\(Class cname _) -> cname == name) class_map in
-    clas
-
--- Get new integer for the location in the store
-newloc :: Store -> Int
-newloc store =
-    Map.size store
-
-interpret :: (ClassMap, ImpMap, ParentMap) -> (Value, Store, Environment) -> Expr -> (Value, Store)
-interpret (class_map, imp_map, parent_map) (so, store, env) expr = do
-    let interpret' = interpret (class_map, imp_map, parent_map) in
-        case expr of
-            --(StaticDispatch _ typ expr typeI methodI params) -> 
-            --    (CoolInt 7, store)
-            (New _ typ _) ->
-                let t0 =
-                        case typ of 
-                            "SELF_TYPE" -> do
-                                let (Object x _) = so in 
-                                    x
-                            t -> t 
-                    (Class name feat_list) = getClass class_map t0
-                    orig_l = newloc store
-                    ls = [orig_l .. (orig_l + (length feat_list) - 1)]
-                    assoc_l = zip [var | (Attribute var _ _) <- feat_list] ls
-                    v1 = Object t0 (Map.fromList assoc_l)
-                    -- Update store here
-                in
-
-                    (CoolInt 5, (Map.empty))
-            _ -> 
-                -- This should eventually return errors
-                (CoolInt 10, store)
-    
-
-
 -- Main Execution
 main = do
-    args <- getArgs
-    if length args == 0 then
-        error "Please supply the .cl-type file as the command line argument"
-    else do
-        contents <- readFile (args !! 0)
-        let class_map = parse_cm $ lines contents
-            imp_map = parse_imp_map $ lines contents
-            (parent_map, ast) = parse_parent_map_and_ast $ lines contents
-        putStrLn "Class Map:"
-        putStrLn $ show $ class_map
-        putStrLn "\nImplementation Map:"
-        putStrLn $ show $ imp_map
-        putStrLn "\nParent Map:"
-        putStrLn $ show $ parent_map
-        putStrLn "\nAnnotated AST:"
-        putStrLn $ show $ ast
-        
-        putStrLn "\nExecution:"
-
-        let m = Object "Main" Map.empty in
-            case m of 
-                (Object typ map) -> do
-                    let m = Map.insert "x" 6 map in 
-                        putStrLn $ show m
-                _ -> putStrLn "Didn't match"
-        
-        --let main = getClass class_map "Main"
-        --    (so, sto, env) = interpret (main, Map.empty, Map.empty) (New 0 "Main" (Identifier 0 "Main"))
-        --    main_meth = getMeth imp_map "Main" "main" in
-        --    interpret (so, sto, env) main_meth
-        
-
-
-
+    --args <- getArgs
+    --if length args == 0 then
+    --    error "Please supply the .cl-type file as the command line argument"
+    --else do
+    putStrLn "hello, world!"
+        --contents <- readFile (args !! 0)
+        --let class_map = parse_cm $ lines contents
+        --    imp_map = parse_imp_map $ lines contents
+        --    (parent_map, ast) = parse_parent_map_and_ast $ lines contents
+        --putStrLn "Class Map:"
+        --putStrLn $ show $ class_map
+        --putStrLn "\nImplementation Map:"
+        --putStrLn $ show $ imp_map
+        --putStrLn "\nParent Map:"
+        --putStrLn $ show $ parent_map
+        --putStrLn "\nAnnotated AST:"
+        --putStrLn $ show $ ast
+    	--putStr contents
