@@ -2,6 +2,7 @@ import System.IO
 import System.Environment
 import Debug.Trace
 import Data.List (find)
+import qualified Data.List as List
 import Data.Map (Map)
 import qualified Data.Map as Map
 
@@ -70,10 +71,12 @@ type Location = Int
 type Store = Map Location Value
 type Environment = Map Name Location
 
+-- Void algebraic data type for default Void value. Perhaps think about using a maybe for Object only
 data Value = CoolBool Bool
         | CoolInt Int
         | CoolString Int String
         | Object Type (Map Name Location)
+        | Void
         deriving (Show)
 
 
@@ -394,6 +397,14 @@ newloc :: Store -> Int
 newloc store =
     Map.size store
 
+default_value :: String -> Value
+default_value typ = case typ of 
+    "Int" -> CoolInt 0
+    "String" -> CoolString 0 ""
+    "Bool" -> CoolBool False
+    _     -> Void
+
+
 interpret :: (ClassMap, ImpMap, ParentMap) -> (Value, Store, Environment) -> Expr -> (Value, Store)
 interpret (class_map, imp_map, parent_map) (so, store, env) expr = do
     let interpret' = interpret (class_map, imp_map, parent_map) in
@@ -401,18 +412,22 @@ interpret (class_map, imp_map, parent_map) (so, store, env) expr = do
             --(StaticDispatch _ typ expr typeI methodI params) -> 
             --    (CoolInt 7, store)
             (New _ typ _) ->
-                let t0 =
-                        case typ of 
-                            "SELF_TYPE" -> do
-                                let (Object x _) = so in 
-                                    x
+                let t0 = case typ of 
+                            "SELF_TYPE" -> let (Object x _) = so in x
                             t -> t 
                     (Class name feat_list) = getClass class_map t0
                     orig_l = newloc store
                     ls = [orig_l .. (orig_l + (length feat_list) - 1)]
                     assoc_l = zip [var | (Attribute var _ _) <- feat_list] ls
+                    -- assoc_t holds association list from var -> type name
+                    assoc_t = zip [var | (Attribute var _ _) <- feat_list] [typ | (Attribute _ typ _) <- feat_list]
                     v1 = Object t0 (Map.fromList assoc_l)
                     -- Update store here
+                    lookup_type var = case (List.lookup var assoc_t) of
+                        Just s -> s
+                        Nothing -> error "We should not be looking up the type of a non existent variable"
+                    store2 = foldl (\a (var, li) -> Map.insert li (default_value (lookup_type var)) a) store assoc_l
+                    -- We now need to initialize the attributes with their respective expr
                 in
 
                     (CoolInt 5, (Map.empty))
