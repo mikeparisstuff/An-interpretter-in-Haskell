@@ -397,6 +397,15 @@ newloc :: Store -> Int
 newloc store =
     Map.size store
 
+-- Find the location given a variable name
+envLookup :: Environment -> String -> Maybe Int
+envLookup env name =
+    Map.lookup name env
+
+storeLookup :: Store -> Int -> Maybe Value
+storeLookup store loc =
+    Map.lookup loc store
+
 default_value :: String -> Value
 default_value typ = case typ of 
     "Int" -> CoolInt 0
@@ -409,8 +418,35 @@ interpret :: (ClassMap, ImpMap, ParentMap) -> (Value, Store, Environment) -> Exp
 interpret (class_map, imp_map, parent_map) (so, store, env) expr = do
     let interpret' = interpret (class_map, imp_map, parent_map) in
         case expr of
-            --(StaticDispatch _ typ expr typeI methodI params) -> 
-            --    (CoolInt 7, store)
+            (Assign _ typ (Identifier _ name) expr) -> 
+                let (val, store2) = interpret' (so, store, env) expr
+                    l1 = case (envLookup env name) of
+                            Just loc -> loc
+                            Nothing  -> error "Should not be looking up non-existent variable in Assign"
+                    -- Update the store to hold the new value at the location we just looked up
+                    store3 = Map.insert l1 val store2
+                in
+                    (val, store3)
+            (IdentExpr _ typ (Identifier _ name)) -> case name of
+                -- If this identifier is self then just return self object and the store
+                "self" -> (so, store)
+                name   ->
+                    let l = case (envLookup env name) of
+                                Just loc -> loc
+                                Nothing  -> error "Should not be looking up non-existent variable in IdentExpr"
+                        val = case (storeLookup store l) of
+                                Just v -> v
+                                Nothing -> error "Variables should always have a value in IdentExpr"
+                    in
+                        (val, store)
+            (TrueBool _ _) ->
+                (CoolBool True, store)
+            (FalseBool _ _) ->
+                (CoolBool False, store)
+            (Integer _ typ int_val) ->
+                (CoolInt int_val, store)
+            (Str _ typ str) ->
+                (CoolString (length str) str, store)
             (New _ typ _) ->
                 let t0 = case typ of 
                             "SELF_TYPE" -> let (Object x _) = so in x
@@ -429,8 +465,8 @@ interpret (class_map, imp_map, parent_map) (so, store, env) expr = do
                     store2 = foldl (\a (var, li) -> Map.insert li (default_value (lookup_type var)) a) store assoc_l
                     -- We now need to initialize the attributes with their respective expr
                 in
-
                     (CoolInt 5, (Map.empty))
+                --(DynamicDispatch _ typ expr (Identifier _ meth_name) expr_list) -> 
             _ -> 
                 -- This should eventually return errors
                 (CoolInt 10, store)
