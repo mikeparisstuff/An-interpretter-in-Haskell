@@ -397,6 +397,15 @@ newloc :: Store -> Int
 newloc store =
     Map.size store
 
+-- Find the location given a variable name
+envLookup :: Environment -> String -> Maybe Int
+envLookup env name =
+    Map.lookup name env
+
+storeLookup :: Store -> Int -> Maybe Value
+storeLookup store loc =
+    Map.lookup loc store
+
 default_value :: String -> Value
 default_value typ = case typ of 
     "Int" -> CoolInt 0
@@ -414,16 +423,37 @@ unpackLetBind letbind =
                 -- REMOVE
                 Nothing   -> (name, Integer 6 "Int" 6)
                 
-
-
-
 interpret :: (ClassMap, ImpMap, ParentMap) -> (Value, Store, Environment) -> Expr -> (Value, Store)
-interpret (class_map, imp_map, parent_map) (so, store, env) expr = 
-    let interpret' = interpret (class_map, imp_map, parent_map) 
-    in
+interpret (class_map, imp_map, parent_map) (so, store, env) expr =
+    let interpret' = interpret (class_map, imp_map, parent_map) in
     case expr of
-        --(StaticDispatch _ typ expr typeI methodI params) -> 
-        --    (CoolInt 7, store)
+        (Assign _ typ (Identifier _ name) expr) -> 
+            let (v1, store1) = interpret' (so, store, env) expr
+                (Just loc) = Map.lookup name env
+                store3 = Map.insert loc v1 store1
+            in
+            (v1, store3)
+
+        (IdentExpr _ typ (Identifier _ name)) -> case name of
+            -- If this identifier is self then just return self object and the store
+            "self" -> (so, store)
+            name   ->
+                let l = case (envLookup env name) of
+                            Just loc -> loc
+                            Nothing  -> error "Should not be looking up non-existent variable in IdentExpr"
+                    val = case (storeLookup store l) of
+                            Just v -> v
+                            Nothing -> error "Variables should always have a value in IdentExpr"
+                in
+                    (val, store)
+        (TrueBool _ _) ->
+            (CoolBool True, store)
+        (FalseBool _ _) ->
+            (CoolBool False, store)
+        (Integer _ typ int_val) ->
+            (CoolInt int_val, store)
+        (Str _ typ str) ->
+            (CoolString (length str) str, store)
         (New _ typ _) ->
             let t0 = case typ of 
                         "SELF_TYPE" -> let (Object x _) = so in x
@@ -431,7 +461,6 @@ interpret (class_map, imp_map, parent_map) (so, store, env) expr =
                 (Class name feat_list) = getClass class_map t0
                 orig_l = newloc store
                 ls = [orig_l .. (orig_l + (length feat_list) - 1)]
-                -- assoc_l is [(name, location), ..]
                 assoc_l = zip [var | (Attribute var _ _) <- feat_list] ls
                 -- assoc_t holds association list from var -> type name
                 assoc_t = zip [var | (Attribute var _ _) <- feat_list] [typ | (Attribute _ typ _) <- feat_list]
@@ -442,10 +471,11 @@ interpret (class_map, imp_map, parent_map) (so, store, env) expr =
                     Nothing -> error "We should not be looking up the type of a non existent variable"
                 store2 = foldl (\a (var, li) -> Map.insert li (default_value (lookup_type var)) a) store assoc_l
                 -- We now need to initialize the attributes with their respective expr
+                ------------ SETUP ------------
                 -- our goal is a set of expressions that modify attrs in scope
                 init_feat_list = filter (\(Attribute _ _ e) -> case e of 
-                                                                (Just e) -> True
-                                                                Nothing -> False
+                                                        (Just e) -> True
+                                                        Nothing -> False
                                         ) feat_list
                 iD ln name = Identifier ln name
                 assign_exprs = [Assign 0 t (iD 0 name) e | (Attribute name t (Just e)) <- init_feat_list]
@@ -456,11 +486,10 @@ interpret (class_map, imp_map, parent_map) (so, store, env) expr =
                         interpret' (so', store', env') expr
                 threadStore' = threadStore (v1, env')
                 -- Actual threading of the object store
+                --------- Thread Strore --------
                 (v2, store3) = foldl threadStore' (Void, store2) assign_exprs
-                --store3 = 
-            in
-            -- Conclusion
-            (v1, store3)
+                in
+                (v2, store3)
 
         (Let _ typ letBinds e2) ->
             -- TODO does not handle multiple lets
@@ -476,12 +505,8 @@ interpret (class_map, imp_map, parent_map) (so, store, env) expr =
             -- conclusion
             (v2, store4)
 
-        (Assign _ typ (Identifier _ name) expr) -> 
-            let (v1, store1) = interpret' (so, store, env) expr
-                (Just loc) = Map.lookup name env
-                store3 = Map.insert loc v1 store1
-            in
-            (v1, store3)
+
+            --(DynamicDispatch _ typ expr (Identifier _ meth_name) expr_list) -> 
         _ -> 
             -- This should eventually return errors
             (CoolInt 10, store)
@@ -497,30 +522,20 @@ main = do
         contents <- readFile (args !! 0)
         let class_map = parse_cm $ lines contents
             imp_map = parse_imp_map $ lines contents
-            (parent_map, ast) = parse_parent_map_and_ast $ lines contents
-        in
-        putStrLn "Class Map:"
-        putStrLn $ show $ class_map
-        putStrLn "\nImplementation Map:"
-        putStrLn $ show $ imp_map
-        putStrLn "\nParent Map:"
-        putStrLn $ show $ parent_map
-        putStrLn "\nAnnotated AST:"
-        putStrLn $ show $ ast
-        
-        putStrLn "\nExecution:"
-
-       -- let  _null = Object "NULL" Map.empty 
-       --      newM = New 0 "Main" (Identifier 0 "")
-       --      curried = (class_map, imp_map, parent_map)
-       --      interpret curried (_null, Map.empty, Map.empty) newM
-       -- in
-            putStrLn "\nBlah"
-        --let main = getClass class_map "Main"
-        --    (so, sto, env) = interpret (main, Map.empty, Map.empty) (New 0 "Main" (Identifier 0 "Main"))
-        --    main_meth = getMeth imp_map "Main" "main" in
-        --    interpret (so, sto, env) main_meth
-        
-
-
+            (parent_map, ast) = parse_parent_map_and_ast $ lines contents 
+            _null = Object "NULL" Map.empty 
+            newM = New 0 "Main" (Identifier 0 "")
+            curried = (class_map, imp_map, parent_map)
+            (main, store) = interpret curried (_null, Map.empty, Map.empty) newM in
+            -- dispatch = 
+            -- res = interpret curried (main, store, main) dispatch 
+            putStrLn $ show $ class_map
+            -- multiple putstrlns do not work for whatever reason
+--            putStrLn "\nImplementation Map:"
+--            putStrLn $ show $ imp_map
+--            putStrLn "\nParent Map:"
+--            putStrLn $ show $ parent_map
+--            putStrLn "\nAnnotated AST:"
+--            putStrLn $ show $ ast
+--            putStrLn "\nExecution:"
 

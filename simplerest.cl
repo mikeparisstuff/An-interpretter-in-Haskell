@@ -4,6 +4,6 @@ class Main inherits IO{
 	z : Int <- 5;
 	a : Int <- z + x;
 	main() : Object {
-		out_int(a)
+		(new IO).out_int(a)
 	};
 };
