@@ -52,7 +52,7 @@ data Expr = Integer LineNo Type Int
         |   DynamicDispatch LineNo Type Expr MethodIdentifier [Expr]
         |   StaticDispatch LineNo Type Expr TypeIdentifier MethodIdentifier [Expr]
         |   Let LineNo Type [LetBinding] Expr
-        |   Case LineNo Type Expr [CaseElement] 
+        |   Case LineNo Type Expr [CaseElement]
         |   Internal LineNo Type Name
     deriving (Show)
 
@@ -82,8 +82,8 @@ data Value = CoolBool Bool
 
 ---------------------------- Class Map ---------------------------------------------
 parse_cm [] = error "empty input file"
-parse_cm ("class_map": num_classes : tl) = 
-    let nc = read num_classes :: Int 
+parse_cm ("class_map": num_classes : tl) =
+    let nc = read num_classes :: Int
     in parse_cm_class nc tl
 
 parse_cm_class _ [] = error "empty class in class map"
@@ -95,12 +95,12 @@ parse_cm_class n (cname : num_attr : tl) =
 
 parse_cm_attribute _ [] = error "empty attribute in class map"
 parse_cm_attribute 0 rem_input = ([], rem_input)
-parse_cm_attribute n xs = case xs of 
-    ("initializer" : attr_name : attr_type : tl) -> 
+parse_cm_attribute n xs = case xs of
+    ("initializer" : attr_name : attr_type : tl) ->
         let (expr, rem_input) = parse_expr tl
             (attrs, fin_rem_input) = parse_cm_attribute (n-1) rem_input
         in ((Attribute attr_name attr_type (Just expr) ) : attrs, fin_rem_input)
-    ("no_initializer" : attr_name : attr_type : tl) -> 
+    ("no_initializer" : attr_name : attr_type : tl) ->
         let (attrs, rem_input) = parse_cm_attribute (n-1) tl
         in ((Attribute attr_name attr_type Nothing) : attrs, rem_input)
 
@@ -122,7 +122,7 @@ parse_imp_class n (cname : num_methods : tl) =
 parse_imp_methods _ [] = error "empty method in implementation map"
 parse_imp_methods 0 rem_input = ([], rem_input)
 parse_imp_methods n xs = case xs of
-    (meth_name : num_formals : tl) -> 
+    (meth_name : num_formals : tl) ->
         let nf = read num_formals :: Int
             (formals, rem_input) = parse_formals_list nf tl
             (meth_owner : rem_input_2) = rem_input
@@ -132,7 +132,7 @@ parse_imp_methods n xs = case xs of
 
 parse_formals_list 0 xs = ([], xs)
 parse_formals_list n xs = case xs of
-    (formal_name : tl) -> 
+    (formal_name : tl) ->
         let (formals, rem_input) = parse_formals_list (n-1) tl
         in (formal_name : formals, rem_input)
     x -> error "this should never happen in parse formals"
@@ -149,7 +149,7 @@ parse_parent_map_and_ast ("parent_map" : num_relations : tl) =
 parse_parent_map_and_ast (hd:tl) = parse_parent_map_and_ast tl
 
 parse_parent_map_relations 0 left = ([], left)
-parse_parent_map_relations n (child:parent:tl) = 
+parse_parent_map_relations n (child:parent:tl) =
     let (relations, rem_lines) = parse_parent_map_relations (n-1) tl
     in ((child, parent) : relations, rem_lines)
 parse_parent_map_relations _ _ = error "this should not happen in parent map relations"
@@ -163,7 +163,7 @@ parse_ast (num_classes : tl) =
     in Program classes
 
 parse_ast_classes 0 _ = []
-parse_ast_classes n (line_no : cname : "inherits" : parent_line_no : parent_name : num_feats : tl) = 
+parse_ast_classes n (line_no : cname : "inherits" : parent_line_no : parent_name : num_feats : tl) =
     let ln = read line_no :: Int
         pln = read parent_line_no :: Int
         nf = read num_feats :: Int
@@ -178,12 +178,12 @@ parse_ast_classes n (line_no : cname : "no_inherits" : num_feats : tl) =
     in ( (AstClass ln cname features Nothing) : classes)
 
 parse_ast_features 0 last = ([], last)
-parse_ast_features n ("attribute_no_init" : line_no : fname : type_line_no : type_name : tl) = 
+parse_ast_features n ("attribute_no_init" : line_no : fname : type_line_no : type_name : tl) =
     let ln = read line_no :: Int
         tln = read type_line_no :: Int
         (features, rem_lines) = parse_ast_features (n-1) tl
     in ((AstAttribute (Identifier ln fname) (Identifier tln type_name) Nothing ) : features, rem_lines)
-parse_ast_features n ("attribute_init" : line_no : fname : type_line_no : type_name : tl) = 
+parse_ast_features n ("attribute_init" : line_no : fname : type_line_no : type_name : tl) =
     let ln = read line_no :: Int
         tln = read type_line_no :: Int
         (expr, rem_lines) = parse_expr tl
@@ -204,7 +204,7 @@ parse_formal_identifiers n (line_no : fname : type_line_no : type_name : tl) =
     let ln = read line_no :: Int
         tln = read type_line_no :: Int
         (formals, rem_lines) = parse_formal_identifiers (n-1) tl
-    in ( (Formal (Identifier ln fname) (Identifier tln type_name)) : formals, rem_lines) 
+    in ( (Formal (Identifier ln fname) (Identifier tln type_name)) : formals, rem_lines)
 
 ------------------------ Expressions -------------------------------------------------
 
@@ -212,7 +212,7 @@ parse_expr xs = case xs of
     -- Integer, String, and Bool
     (line_no : expr_type : "integer" : val : tl) ->
         let n = read line_no :: Int
-            v = read val :: Int 
+            v = read val :: Int
         in ((Integer n expr_type v), tl)
     (line_no : expr_type : "string" : val : tl) ->
         let n = read line_no :: Int
@@ -350,7 +350,7 @@ parse_expr xs = case xs of
     _ -> error "could not match expr"
 
 parse_case_elements 0 tl = ([], tl)
-parse_case_elements n (var_ln : var_name : type_ln : type_name : tl) = 
+parse_case_elements n (var_ln : var_name : type_ln : type_name : tl) =
     let ln = read var_ln :: Int
         tln = read type_ln :: Int
         (expr, rem_input) = parse_expr tl
@@ -363,7 +363,7 @@ parse_binding_list n ("let_binding_no_init" : var_ln : var_name : type_ln : type
         tln = read type_ln :: Int
         (binding_list, rem_input) = parse_binding_list (n-1) tl
     in ( (LetBinding (Identifier ln var_name) (Identifier tln type_name) Nothing) : binding_list, rem_input)
-parse_binding_list n ("let_binding_init" : var_ln : var_name : type_ln : type_name : tl) = 
+parse_binding_list n ("let_binding_init" : var_ln : var_name : type_ln : type_name : tl) =
     let ln = read var_ln :: Int
         tln = read type_ln :: Int
         (expr, rem_input) = parse_expr tl
@@ -376,19 +376,26 @@ parse_expr_list n tl =
         (expr_list, rem_input_2) = parse_expr_list (n-1) rem_input
     in ( (expr : expr_list), rem_input_2)
 
-parse_identifier (line_no : name : tl) = 
+parse_identifier (line_no : name : tl) =
     let n = read line_no :: Int
     in ((Identifier n name), tl)
 
 ------------------------------- Interpreter Functions ---------------------------------
-getMeth :: ImpMap -> String -> String -> Expr
-getMeth imp_map clas_name meth_name = 
-    let (Just (Class name feats)) = find (\(Class name _)  -> name == clas_name) imp_map
-        (Just (Method _ _ _ expr)) = find (\(Method name _ _ _) -> name == meth_name) feats in
-    expr
-    
+impMapLookup :: ImpMap -> String -> String -> ([String], Expr)
+impMapLookup imp_map class_name f =
+    let (Just (Class name feats)) = find (\(Class name _) -> name == class_name) imp_map
+        (Just (Method _ formals _ expr)) = find (\(Method name _ _ _) -> name == f) feats
+        in
+        trace ("Looking for class with name: " ++ class_name) (trace ("Looking for method with name: " ++ f) (formals, expr))
+
+--getMeth :: ImpMap -> String -> String -> Expr
+--getMeth imp_map clas_name meth_name =
+--    let (Just (Class name feats)) = find (\(Class name _)  -> name == clas_name) imp_map
+--        (Just (Method _ _ _ expr)) = find (\(Method name _ _ _) -> name == meth_name) feats in
+--    expr
+
 getClass :: ClassMap -> String -> Class
-getClass class_map name = 
+getClass class_map name =
     let (Just clas) = find (\(Class cname _) -> cname == name) class_map in
     clas
 
@@ -407,27 +414,45 @@ storeLookup store loc =
     Map.lookup loc store
 
 default_value :: String -> Value
-default_value typ = case typ of 
+default_value typ = case typ of
     "Int" -> CoolInt 0
     "String" -> CoolString 0 ""
     "Bool" -> CoolBool False
     _     -> Void
 
+checkForVoidAndCreateEnv :: Int -> Value -> [(String, Int)] -> Environment
+checkForVoidAndCreateEnv line_no Void formal_locs = error ("ERROR: " ++ (show line_no) ++ ": Exception: Dispatch on void.")
+checkForVoidAndCreateEnv line_no (Object _ obj_map) formal_locs =
+    let formal_map = Map.fromList formal_locs
+        env2 = Map.union obj_map formal_map in env2
+
+checkForVoidAndReturnType :: Int -> Value -> String
+checkForVoidAndReturnType line_no Void = error ("ERROR: " ++ (show line_no) ++ ": Exception: Dispatch on void.")
+checkForVoidAndReturnType line_no (Object typ _) = typ
 -- unpacks a let binding to extract an expression
 -- TODO fix case of no expr
-unpackLetBind :: LetBinding -> (Name, Expr)
-unpackLetBind letbind = 
-         let (LetBinding (Identifier _ name) typ maybeExpr) = letbind in
-            case maybeExpr of 
-                Just expr -> (name, expr)
-                -- REMOVE
-                Nothing   -> (name, Integer 6 "Int" 6)
-                
+--unpackLetBind :: LetBinding -> (Name, Expr)
+--unpackLetBind letbind =
+--         let (LetBinding (Identifier _ name) typ maybeExpr) = letbind in
+--            case maybeExpr of
+--                Just expr -> (name, expr)
+--                -- If no init set to default for that type
+--                Nothing   -> default_value typ
+
 interpret :: (ClassMap, ImpMap, ParentMap) -> (Value, Store, Environment) -> Expr -> (Value, Store)
 interpret (class_map, imp_map, parent_map) (so, store, env) expr =
-    let interpret' = interpret (class_map, imp_map, parent_map) in
+    let interpret' = interpret (class_map, imp_map, parent_map)
+        threadExprs :: (Value, Store, Environment) -> [Expr] -> ([Value], Store)
+        threadExprs (so, store, env) [] = ([], store)
+        threadExprs (so, store, env) (expr : tl) =
+            let (vi, store_n) = interpret' (so, store, env) expr
+                (vals, store_last) = threadExprs (so, store_n, env) tl
+                in
+                    (vi : vals, store_last)
+    in do
+
     case expr of
-        (Assign _ typ (Identifier _ name) expr) -> 
+        (Assign _ typ (Identifier _ name) expr) ->
             let (v1, store1) = interpret' (so, store, env) expr
                 (Just loc) = Map.lookup name env
                 store3 = Map.insert loc v1 store1
@@ -455,9 +480,9 @@ interpret (class_map, imp_map, parent_map) (so, store, env) expr =
         (Str _ typ str) ->
             (CoolString (length str) str, store)
         (New _ typ _) ->
-            let t0 = case typ of 
+            let t0 = case typ of
                         "SELF_TYPE" -> let (Object x _) = so in x
-                        t -> t 
+                        t -> t
                 (Class name feat_list) = getClass class_map t0
                 orig_l = newloc store
                 ls = [orig_l .. (orig_l + (length feat_list) - 1)]
@@ -473,7 +498,7 @@ interpret (class_map, imp_map, parent_map) (so, store, env) expr =
                 -- We now need to initialize the attributes with their respective expr
                 ------------ SETUP ------------
                 -- our goal is a set of expressions that modify attrs in scope
-                init_feat_list = filter (\(Attribute _ _ e) -> case e of 
+                init_feat_list = filter (\(Attribute _ _ e) -> case e of
                                                         (Just e) -> True
                                                         Nothing -> False
                                         ) feat_list
@@ -482,35 +507,78 @@ interpret (class_map, imp_map, parent_map) (so, store, env) expr =
                 env' = Map.fromList assoc_l
                 -- function to pass to store
                 threadStore :: (Value, Environment) -> (Value, Store) -> Expr -> (Value, Store)
-                threadStore (so', env') (_, store') expr = 
+                threadStore (so', env') (_, store') expr =
                         interpret' (so', store', env') expr
                 threadStore' = threadStore (v1, env')
                 -- Actual threading of the object store
                 --------- Thread Strore --------
                 (v2, store3) = foldl threadStore' (Void, store2) assign_exprs
                 in
-                (v2, store3)
+                (v1, store3)
+        (DynamicDispatch line_no typ e0 (Identifier _ f) exprs) ->
+            let (vals, store_n1) = threadExprs (so, store, env) exprs
+                (v0, store_n2) = interpret' (so, store_n1, env) e0
+                v0_typ = checkForVoidAndReturnType line_no v0
+                (formals, e_n1) = impMapLookup imp_map v0_typ f
+                orig_l = newloc store
+                ls = [orig_l .. (orig_l + (length formals) - 1)]
+                assoc_l = zip vals ls
+                store_n3 = foldl (\a (val, li) -> Map.insert li val a) store_n2 assoc_l
+                form_ls = zip formals ls
+                env2 = checkForVoidAndCreateEnv line_no v0 form_ls
+                (v_n1, s_n4) = interpret' (v0, store_n3, env2) e_n1
+                in (v_n1, s_n4)
+        (SelfDispatch line_no typ (Identifier _ f) exprs) ->
+            let (vals, store_n1) = threadExprs (so, store, env) exprs
+                (formals, e_n1) = impMapLookup imp_map typ f
+                orig_l = newloc store
+                ls = [orig_l .. (orig_l + (length formals) - 1)]
+                assoc_l = zip vals ls
+                store_n3 = foldl (\a (val, li) -> Map.insert li val a) store_n1 assoc_l
+                form_ls = zip formals ls
+                env2 = checkForVoidAndCreateEnv line_no so form_ls
+                (v_n1, s_n4) = interpret' (so, store_n3, env2) e_n1
+                in (v_n1, s_n4)
+        (Plus line_no typ e1 e2) ->
+            let (CoolInt i1, store2) = interpret' (so, store, env) e1
+                (CoolInt i2, store3) = interpret' (so, store2, env) e2
+                in
+                    (CoolInt (i1 + i2), store3)
+        (Minus line_no typ e1 e2) ->
+            let (CoolInt i1, store2) = interpret' (so, store, env) e1
+                (CoolInt i2, store3) = interpret' (so, store2, env) e2
+                in
+                    (CoolInt (i1 - i2), store3)
+        (Times line_no typ e1 e2) ->
+            let (CoolInt i1, store2) = interpret' (so, store, env) e1
+                (CoolInt i2, store3) = interpret' (so, store2, env) e2
+                in
+                    (CoolInt (i1 * i2), store3)
+        (Divide line_no typ e1 e2) ->
+            let (CoolInt i1, store2) = interpret' (so, store, env) e1
+                (CoolInt i2, store3) = interpret' (so, store2, env) e2
+                in
+                    (CoolInt (i1 `quot` i2), store3)
 
-        (Let _ typ letBinds e2) ->
-            -- TODO does not handle multiple lets
-            -- deals with let bindings first
-            let (id, e1) = unpackLetBind $ head letBinds
-            -- operational semantics
-                (v1, store2) = interpret' (so, store, env) e1
-                loc = newloc store2
-                store3 = Map.insert loc v1 store2
-                env' = Map.insert id loc env
-                (v2, store4) = interpret' (so, store3, env') e2
-            in
-            -- conclusion
-            (v2, store4)
-
-
-            --(DynamicDispatch _ typ expr (Identifier _ meth_name) expr_list) -> 
-        _ -> 
+        --(Let _ typ [] e2) ->
+        --    -- Evaluate e2
+        --(Let _ typ letBinds e2) ->
+        --    -- TODO does not handle multiple lets
+        --    -- deals with let bindings first
+        --    let (id, e1) = unpackLetBind $ head letBinds
+        --    -- operational semantics
+        --        (v1, store2) = interpret' (so, store, env) e1
+        --        loc = newloc store2
+        --        store3 = Map.insert loc v1 store2
+        --        env' = Map.insert id loc env
+        --        (v2, store4) = interpret' (so, store3, env') e2
+        --    in
+        --    -- conclusion
+        --    (v2, store4)
+            --(DynamicDispatch _ typ expr (Identifier _ meth_name) expr_list) ->
+        _ ->
             -- This should eventually return errors
             (CoolInt 10, store)
-
 
 
 -- Main Execution
@@ -522,20 +590,24 @@ main = do
         contents <- readFile (args !! 0)
         let class_map = parse_cm $ lines contents
             imp_map = parse_imp_map $ lines contents
-            (parent_map, ast) = parse_parent_map_and_ast $ lines contents 
-            _null = Object "NULL" Map.empty 
+            (parent_map, ast) = parse_parent_map_and_ast $ lines contents
+            _null = Object "NULL" Map.empty
             newM = New 0 "Main" (Identifier 0 "")
+            mainMeth = DynamicDispatch 0 "Object" newM (Identifier 0 "main") []
             curried = (class_map, imp_map, parent_map)
-            (main, store) = interpret curried (_null, Map.empty, Map.empty) newM in
-            -- dispatch = 
-            -- res = interpret curried (main, store, main) dispatch 
-            putStrLn $ show $ class_map
+            (main, store) = interpret curried (_null, Map.empty, Map.empty) mainMeth
+            in do
+
+            putStrLn $ show $ main
+            -- dispatch =
+            -- res = interpret curried (main, store, main) dispatch
+            --putStrLn $ show $ class_map
             -- multiple putstrlns do not work for whatever reason
---            putStrLn "\nImplementation Map:"
---            putStrLn $ show $ imp_map
---            putStrLn "\nParent Map:"
---            putStrLn $ show $ parent_map
---            putStrLn "\nAnnotated AST:"
---            putStrLn $ show $ ast
+            --putStrLn "\nImplementation Map:"
+            --putStrLn $ show $ imp_map
+            --putStrLn "\nParent Map:"
+            --putStrLn $ show $ parent_map
+            --putStrLn "\nAnnotated AST:"
+            --putStrLn $ show $ ast
 --            putStrLn "\nExecution:"
 
