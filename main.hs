@@ -450,7 +450,6 @@ interpret (class_map, imp_map, parent_map) (so, store, env) expr =
                 in
                     (vi : vals, store_last)
     in do
-
     case expr of
         (Assign _ typ (Identifier _ name) expr) ->
             let (v1, store1) = interpret' (so, store, env) expr
@@ -530,7 +529,8 @@ interpret (class_map, imp_map, parent_map) (so, store, env) expr =
                 in (v_n1, s_n4)
         (SelfDispatch line_no typ (Identifier _ f) exprs) ->
             let (vals, store_n1) = threadExprs (so, store, env) exprs
-                (formals, e_n1) = impMapLookup imp_map typ f
+                so_typ = checkForVoidAndReturnType line_no so
+                (formals, e_n1) = impMapLookup imp_map so_typ f
                 orig_l = newloc store
                 ls = [orig_l .. (orig_l + (length formals) - 1)]
                 assoc_l = zip vals ls

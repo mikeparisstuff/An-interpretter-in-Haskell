@@ -1,5 +1,16 @@
 class Main inherits IO{
+    a : Int <- 8;
+    b : Int <- a * 2;
 	main() : Object {
-        2 + 2 * (4 + 2)
+        wooooookie()
 	};
+    wooooookie() : Object {
+        a * b
+    };
+};
+
+class Dog {
+    bark() : Object {
+        9 * 9
+    };
 };
