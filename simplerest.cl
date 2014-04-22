@@ -5,7 +5,7 @@ class Main inherits IO{
         wooooookie()
 	};
     wooooookie() : Object {
-        a * b
+        a * (b + 8) * 7 - 9
     };
 };
 

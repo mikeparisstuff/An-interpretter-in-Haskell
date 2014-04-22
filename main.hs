@@ -445,10 +445,10 @@ interpret (class_map, imp_map, parent_map) (so, store, env) expr =
         threadExprs :: (Value, Store, Environment) -> [Expr] -> ([Value], Store, IO())
         threadExprs (so, store, env) [] = ([], store, return ())
         threadExprs (so, store, env) (expr : tl) =
-            let (vi, store_n, _) = interpret' (so, store, env) expr
-                (vals, store_last, io) = threadExprs (so, store_n, env) tl
+            let (vi, store_n, io1) = interpret' (so, store, env) expr
+                (vals, store_last, io2) = threadExprs (so, store_n, env) tl
                 in
-                    (vi : vals, store_last, io)
+                    (vi : vals, store_last, io1 >> io2)
     in do
     case expr of
         (Assign _ typ (Identifier _ name) expr) ->
@@ -478,45 +478,45 @@ interpret (class_map, imp_map, parent_map) (so, store, env) expr =
             (CoolInt int_val, store, return ())
         (Str _ typ str) ->
             (CoolString (length str) str, store, return ())
-        --(New _ typ _) ->
-        --    let t0 = case typ of
-        --                "SELF_TYPE" -> let (Object x _) = so in x
-        --                t -> t
-        --        (Class name feat_list) = getClass class_map t0
-        --        orig_l = newloc store
-        --        ls = [orig_l .. (orig_l + (length feat_list) - 1)]
-        --        assoc_l = zip [var | (Attribute var _ _) <- feat_list] ls
-        --        -- assoc_t holds association list from var -> type name
-        --        assoc_t = zip [var | (Attribute var _ _) <- feat_list] [typ | (Attribute _ typ _) <- feat_list]
-        --        v1 = Object t0 (Map.fromList assoc_l)
-        --        -- Update store here
-        --        lookup_type var = case (List.lookup var assoc_t) of
-        --            Just s -> s
-        --            Nothing -> error "We should not be looking up the type of a non existent variable"
-        --        store2 = foldl (\a (var, li) -> Map.insert li (default_value (lookup_type var)) a) store assoc_l
-        --        -- We now need to initialize the attributes with their respective expr
-        --        ------------ SETUP ------------
-        --        -- our goal is a set of expressions that modify attrs in scope
-        --        init_feat_list = filter (\(Attribute _ _ e) -> case e of
-        --                                                (Just e) -> True
-        --                                                Nothing -> False
-        --                                ) feat_list
-        --        iD ln name = Identifier ln name
-        --        assign_exprs = [Assign 0 t (iD 0 name) e | (Attribute name t (Just e)) <- init_feat_list]
-        --        env' = Map.fromList assoc_l
-        --        -- function to pass to store
-        --        threadStore :: (Value, Environment) -> (Value, Store) -> Expr -> (Value, Store, IO ())
-        --        threadStore (so', env') (_, store') expr =
-        --                interpret' (so', store', env') expr
-        --        threadStore' = threadStore (v1, env')
-        --        -- Actual threading of the object store
-        --        --------- Thread Strore --------
-        --        (v2, store3, io) = foldl threadStore' (Void, store2) assign_exprs
-        --        in
-        --        (v1, store3, return ())
+        (New _ typ _) ->
+            let t0 = case typ of
+                        "SELF_TYPE" -> let (Object x _) = so in x
+                        t -> t
+                (Class name feat_list) = getClass class_map t0
+                orig_l = newloc store
+                ls = [orig_l .. (orig_l + (length feat_list) - 1)]
+                assoc_l = zip [var | (Attribute var _ _) <- feat_list] ls
+                -- assoc_t holds association list from var -> type name
+                assoc_t = zip [var | (Attribute var _ _) <- feat_list] [typ | (Attribute _ typ _) <- feat_list]
+                v1 = Object t0 (Map.fromList assoc_l)
+                -- Update store here
+                lookup_type var = case (List.lookup var assoc_t) of
+                    Just s -> s
+                    Nothing -> error "We should not be looking up the type of a non existent variable"
+                store2 = foldl (\a (var, li) -> Map.insert li (default_value (lookup_type var)) a) store assoc_l
+                -- We now need to initialize the attributes with their respective expr
+                ------------ SETUP ------------
+                -- our goal is a set of expressions that modify attrs in scope
+                init_feat_list = filter (\(Attribute _ _ e) -> case e of
+                                                        (Just e) -> True
+                                                        Nothing -> False
+                                        ) feat_list
+                iD ln name = Identifier ln name
+                assign_exprs = [Assign 0 t (iD 0 name) e | (Attribute name t (Just e)) <- init_feat_list]
+                env' = Map.fromList assoc_l
+                -- function to pass to store
+                --threadStore :: (Value, Environment) -> (Value, Store) -> Expr -> (Value, Store, IO ())
+                --threadStore (so', env') (_, store') expr =
+                --        interpret' (so', store', env') expr
+                --threadStore' = threadStore (v1, env')
+                ---- Actual threading of the object store
+                ----------- Thread Strore --------
+                --(v2, store3, io) = foldl threadStore' (Void, store2) assign_exprs
+                in
+                (v1, store2, return ())
         (DynamicDispatch line_no typ e0 (Identifier _ f) exprs) ->
-            let (vals, store_n1, _) = threadExprs (so, store, env) exprs
-                (v0, store_n2, _) = interpret' (so, store_n1, env) e0
+            let (vals, store_n1, io1) = threadExprs (so, store, env) exprs
+                (v0, store_n2, io2) = interpret' (so, store_n1, env) e0
                 v0_typ = checkForVoidAndReturnType line_no v0
                 (formals, e_n1) = impMapLookup imp_map v0_typ f
                 orig_l = newloc store
@@ -525,10 +525,10 @@ interpret (class_map, imp_map, parent_map) (so, store, env) expr =
                 store_n3 = foldl (\a (val, li) -> Map.insert li val a) store_n2 assoc_l
                 form_ls = zip formals ls
                 env2 = checkForVoidAndCreateEnv line_no v0 form_ls
-                (v_n1, s_n4, io) = interpret' (v0, store_n3, env2) e_n1
-                in (v_n1, s_n4, io)
+                (v_n1, s_n4, io3) = interpret' (v0, store_n3, env2) e_n1
+                in (v_n1, s_n4, io1 >> io2 >> io3)
         (SelfDispatch line_no typ (Identifier _ f) exprs) ->
-            let (vals, store_n1, _) = threadExprs (so, store, env) exprs
+            let (vals, store_n1, io1) = threadExprs (so, store, env) exprs
                 so_typ = checkForVoidAndReturnType line_no so
                 (formals, e_n1) = impMapLookup imp_map so_typ f
                 orig_l = newloc store
@@ -537,28 +537,28 @@ interpret (class_map, imp_map, parent_map) (so, store, env) expr =
                 store_n3 = foldl (\a (val, li) -> Map.insert li val a) store_n1 assoc_l
                 form_ls = zip formals ls
                 env2 = checkForVoidAndCreateEnv line_no so form_ls
-                (v_n1, s_n4, io) = interpret' (so, store_n3, env2) e_n1
-                in (v_n1, s_n4, io)
+                (v_n1, s_n4, io2) = interpret' (so, store_n3, env2) e_n1
+                in (v_n1, s_n4, io1 >> io2)
         (Plus line_no typ e1 e2) ->
-            let (CoolInt i1, store2, _) = interpret' (so, store, env) e1
-                (CoolInt i2, store3, io) = interpret' (so, store2, env) e2
+            let (CoolInt i1, store2, io1) = interpret' (so, store, env) e1
+                (CoolInt i2, store3, io2) = interpret' (so, store2, env) e2
                 in
-                    (CoolInt (i1 + i2), store3, io)
+                    (CoolInt (i1 + i2), store3, print "Plus" >> io1 >> io2)
         (Minus line_no typ e1 e2) ->
-            let (CoolInt i1, store2, _) = interpret' (so, store, env) e1
-                (CoolInt i2, store3, io) = interpret' (so, store2, env) e2
+            let (CoolInt i1, store2, io1) = interpret' (so, store, env) e1
+                (CoolInt i2, store3, io2) = interpret' (so, store2, env) e2
                 in
-                    (CoolInt (i1 - i2), store3, io)
+                    (CoolInt (i1 - i2), store3, print "Minus\n" >> io1 >> io2)
         (Times line_no typ e1 e2) ->
-            let (CoolInt i1, store2, _) = interpret' (so, store, env) e1
-                (CoolInt i2, store3, io) = interpret' (so, store2, env) e2
+            let (CoolInt i1, store2, io1) = interpret' (so, store, env) e1
+                (CoolInt i2, store3, io2) = interpret' (so, store2, env) e2
                 in
-                    (CoolInt (i1 * i2), store3, io)
+                    (CoolInt (i1 * i2), store3,  getLine >>= putStr >> io1 >> io2)
         (Divide line_no typ e1 e2) ->
-            let (CoolInt i1, store2, _) = interpret' (so, store, env) e1
-                (CoolInt i2, store3, io) = interpret' (so, store2, env) e2
+            let (CoolInt i1, store2, io1) = interpret' (so, store, env) e1
+                (CoolInt i2, store3, io2) = interpret' (so, store2, env) e2
                 in
-                    (CoolInt (i1 `quot` i2), store3, io)
+                    (CoolInt (i1 `quot` i2), store3, io1 >> io2)
 
         --(Let _ typ [] e2) ->
         --    -- Evaluate e2
@@ -595,10 +595,10 @@ main = do
             newM = New 0 "Main" (Identifier 0 "")
             mainMeth = DynamicDispatch 0 "Object" newM (Identifier 0 "main") []
             curried = (class_map, imp_map, parent_map)
-            (main, store, _) = interpret curried (_null, Map.empty, Map.empty) mainMeth
+            (main, store, io) = interpret curried (_null, Map.empty, Map.empty) mainMeth
             in do
-
-            putStrLn $ show $ main
+                io
+                --putStrLn $ show $ main
             -- dispatch =
             -- res = interpret curried (main, store, main) dispatch
             --putStrLn $ show $ class_map
