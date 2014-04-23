@@ -5,6 +5,10 @@ import Data.List (find)
 import qualified Data.List as List
 import Data.Map (Map)
 import qualified Data.Map as Map
+import Control.Monad.State
+import Control.Monad (foldM)
+
+type StateWithIO s a = StateT s IO a
 
 type Type = String
 type Name = String
@@ -70,6 +74,8 @@ type Location = Int
 
 type Store = Map Location Value
 type Environment = Map Name Location
+
+type ProgramState = Store
 
 -- Void algebraic data type for default Void value. Perhaps think about using a maybe for Object only
 data Value = CoolBool Bool
@@ -379,20 +385,10 @@ parse_identifier (line_no : name : tl) =
     let n = read line_no :: Int
     in ((Identifier n name), tl)
 
+
 ------------------------------- Interpreter Functions ---------------------------------
-impMapLookup :: ImpMap -> String -> String -> ([String], Expr)
-impMapLookup imp_map class_name f =
-    let (Just (Class name feats)) = find (\(Class name _) -> name == class_name) imp_map
-        (Just (Method _ formals _ expr)) = find (\(Method name _ _ _) -> name == f) feats
-        in
-        trace ("Looking for class with name: " ++ class_name) (trace ("Looking for method with name: " ++ f) (formals, expr))
 
---getMeth :: ImpMap -> String -> String -> Expr
---getMeth imp_map clas_name meth_name =
---    let (Just (Class name feats)) = find (\(Class name _)  -> name == clas_name) imp_map
---        (Just (Method _ _ _ expr)) = find (\(Method name _ _ _) -> name == meth_name) feats in
---    expr
-
+--------- Helper Functions ---------------
 getClass :: ClassMap -> String -> Class
 getClass class_map name =
     let (Just clas) = find (\(Class cname _) -> cname == name) class_map in
@@ -428,157 +424,107 @@ checkForVoidAndCreateEnv line_no (Object _ obj_map) formal_locs =
 checkForVoidAndReturnType :: Int -> Value -> String
 checkForVoidAndReturnType line_no Void = error ("ERROR: " ++ (show line_no) ++ ": Exception: Dispatch on void.")
 checkForVoidAndReturnType line_no (Object typ _) = typ
--- unpacks a let binding to extract an expression
--- TODO fix case of no expr
---unpackLetBind :: LetBinding -> (Name, Expr)
---unpackLetBind letbind =
---         let (LetBinding (Identifier _ name) typ maybeExpr) = letbind in
---            case maybeExpr of
---                Just expr -> (name, expr)
---                -- If no init set to default for that type
---                Nothing   -> default_value typ
 
-interpret :: (ClassMap, ImpMap, ParentMap) -> (Value, Store, Environment) -> Expr -> (Value, Store, IO ())
-interpret (class_map, imp_map, parent_map) (so, store, env) expr =
-    let interpret' = interpret (class_map, imp_map, parent_map)
-        threadExprs :: (Value, Store, Environment) -> [Expr] -> ([Value], Store, IO())
-        threadExprs (so, store, env) [] = ([], store, return ())
-        threadExprs (so, store, env) (expr : tl) =
-            let (vi, store_n, io1) = interpret' (so, store, env) expr
-                (vals, store_last, io2) = threadExprs (so, store_n, env) tl
-                in
-                    (vi : vals, store_last, io1 >> io2)
+
+--------- Evaluation ----------------
+eval :: (ClassMap, ImpMap, ParentMap) -> Value -> Environment -> Expr -> StateWithIO ProgramState Value
+eval (cm, im, pm) so env expr =
+    let eval' = eval (cm, im, pm)
     in do
-    case expr of
-        (Assign _ typ (Identifier _ name) expr) ->
-            let (v1, store1, io) = interpret' (so, store, env) expr
-                (Just loc) = Map.lookup name env
-                store3 = Map.insert loc v1 store1
-            in
-            (v1, store3, io)
-
-        (IdentExpr _ typ (Identifier _ name)) -> case name of
-            -- If this identifier is self then just return self object and the store
-            "self" -> (so, store, return ())
-            name   ->
-                let l = case (envLookup env name) of
+        case expr of
+            (TrueBool _ _) ->
+                return (CoolBool True)
+            (FalseBool _ _) ->
+                return (CoolBool False)
+            (Integer _ typ int_val) ->
+                return (CoolInt int_val)
+            (Str _ typ str) ->
+                return (CoolString (length str) str)
+            (Plus line_no typ e1 e2) -> do
+                CoolInt i1 <- eval' so env e1
+                CoolInt i2 <- eval' so env e2
+                return (CoolInt (i1 + i2))
+            (Minus line_no typ e1 e2) -> do
+                CoolInt i1 <- eval' so env e1
+                CoolInt i2 <- eval' so env e2
+                return (CoolInt (i1 - i2))
+            (Times line_no typ e1 e2) -> do
+                CoolInt i1 <- eval' so env e1
+                CoolInt i2 <- eval' so env e2
+                return (CoolInt (i1 * i2))
+            (Divide line_no typ e1 e2) -> do
+                CoolInt i1 <- eval' so env e1
+                CoolInt i2 <- eval' so env e2
+                return (CoolInt (i1 `quot` i2))
+            (Assign _ typ (Identifier _ name) expr) -> do
+                v1 <- eval' so env expr
+                store <- get
+                let (Just loc) = Map.lookup name env in do
+                    put (Map.insert loc v1 store)
+                    return v1
+            (IdentExpr _ typ (Identifier _ name)) -> case name of
+                "self" -> return so
+                name -> do
+                    store <- get
+                    let l = case (envLookup env name) of
                             Just loc -> loc
                             Nothing  -> error "Should not be looking up non-existent variable in IdentExpr"
-                    val = case (storeLookup store l) of
+                        val = case (storeLookup store l) of
                             Just v -> v
-                            Nothing -> error "Variables should always have a value in IdentExpr"
-                in
-                    (val, store, return ())
-        (TrueBool _ _) ->
-            (CoolBool True, store, return ())
-        (FalseBool _ _) ->
-            (CoolBool False, store, return ())
-        (Integer _ typ int_val) ->
-            (CoolInt int_val, store, return ())
-        (Str _ typ str) ->
-            (CoolString (length str) str, store, return ())
-        (New _ typ _) ->
-            let t0 = case typ of
-                        "SELF_TYPE" -> let (Object x _) = so in x
-                        t -> t
-                (Class name feat_list) = getClass class_map t0
-                orig_l = newloc store
-                ls = [orig_l .. (orig_l + (length feat_list) - 1)]
-                assoc_l = zip [var | (Attribute var _ _) <- feat_list] ls
-                -- assoc_t holds association list from var -> type name
-                assoc_t = zip [var | (Attribute var _ _) <- feat_list] [typ | (Attribute _ typ _) <- feat_list]
-                v1 = Object t0 (Map.fromList assoc_l)
-                -- Update store here
-                lookup_type var = case (List.lookup var assoc_t) of
-                    Just s -> s
-                    Nothing -> error "We should not be looking up the type of a non existent variable"
-                store2 = foldl (\a (var, li) -> Map.insert li (default_value (lookup_type var)) a) store assoc_l
-                -- We now need to initialize the attributes with their respective expr
-                ------------ SETUP ------------
-                -- our goal is a set of expressions that modify attrs in scope
-                init_feat_list = filter (\(Attribute _ _ e) -> case e of
+                            Nothing -> error "Variables should always have a value in IdentExpr" in do
+                    return val
+            (New _ typ _) -> do
+                store <- get
+                let t0 = case typ of
+                            "SELF_TYPE" -> let (Object x _) = so in x
+                            t -> t
+                    (Class name feat_list) = getClass cm t0
+                    orig_l = newloc store
+                    ls = [orig_l .. (orig_l + (length feat_list) - 1)]
+                    assoc_l = zip [var | (Attribute var _ _) <- feat_list] ls
+                    -- assoc_t holds assoc list from var -> type name
+                    assoc_t = zip [var | (Attribute var _ _) <- feat_list] [typ | (Attribute _ typ _) <- feat_list]
+                    v1 = Object t0 (Map.fromList assoc_l)
+                    -- Update the store
+                    lookup_type var = case (List.lookup var assoc_t) of
+                        Just s -> s
+                        Nothing -> error "We should not be looking up the type of a non existent variable"
+                    store2 = foldl (\a (var, li) -> Map.insert li (default_value (lookup_type var)) a) store assoc_l
+                    -- We now need to initialize the attributes with their respective expr
+                    ----------- SETUP -------------
+                    -- our goal is a set of expressions that modify attrs in scope
+                    init_feat_list = filter (\(Attribute _ _ e) -> case e of
                                                         (Just e) -> True
                                                         Nothing -> False
-                                        ) feat_list
-                iD ln name = Identifier ln name
-                assign_exprs = [Assign 0 t (iD 0 name) e | (Attribute name t (Just e)) <- init_feat_list]
-                env' = Map.fromList assoc_l
-                -- function to pass to store
-                --threadStore :: (Value, Environment) -> (Value, Store) -> Expr -> (Value, Store, IO ())
-                --threadStore (so', env') (_, store') expr =
-                --        interpret' (so', store', env') expr
-                --threadStore' = threadStore (v1, env')
-                ---- Actual threading of the object store
-                ----------- Thread Strore --------
-                --(v2, store3, io) = foldl threadStore' (Void, store2) assign_exprs
-                in
-                (v1, store2, return ())
-        (DynamicDispatch line_no typ e0 (Identifier _ f) exprs) ->
-            let (vals, store_n1, io1) = threadExprs (so, store, env) exprs
-                (v0, store_n2, io2) = interpret' (so, store_n1, env) e0
-                v0_typ = checkForVoidAndReturnType line_no v0
-                (formals, e_n1) = impMapLookup imp_map v0_typ f
-                orig_l = newloc store
-                ls = [orig_l .. (orig_l + (length formals) - 1)]
-                assoc_l = zip vals ls
-                store_n3 = foldl (\a (val, li) -> Map.insert li val a) store_n2 assoc_l
-                form_ls = zip formals ls
-                env2 = checkForVoidAndCreateEnv line_no v0 form_ls
-                (v_n1, s_n4, io3) = interpret' (v0, store_n3, env2) e_n1
-                in (v_n1, s_n4, io1 >> io2 >> io3)
-        (SelfDispatch line_no typ (Identifier _ f) exprs) ->
-            let (vals, store_n1, io1) = threadExprs (so, store, env) exprs
-                so_typ = checkForVoidAndReturnType line_no so
-                (formals, e_n1) = impMapLookup imp_map so_typ f
-                orig_l = newloc store
-                ls = [orig_l .. (orig_l + (length formals) - 1)]
-                assoc_l = zip vals ls
-                store_n3 = foldl (\a (val, li) -> Map.insert li val a) store_n1 assoc_l
-                form_ls = zip formals ls
-                env2 = checkForVoidAndCreateEnv line_no so form_ls
-                (v_n1, s_n4, io2) = interpret' (so, store_n3, env2) e_n1
-                in (v_n1, s_n4, io1 >> io2)
-        (Plus line_no typ e1 e2) ->
-            let (CoolInt i1, store2, io1) = interpret' (so, store, env) e1
-                (CoolInt i2, store3, io2) = interpret' (so, store2, env) e2
-                in
-                    (CoolInt (i1 + i2), store3, print "Plus" >> io1 >> io2)
-        (Minus line_no typ e1 e2) ->
-            let (CoolInt i1, store2, io1) = interpret' (so, store, env) e1
-                (CoolInt i2, store3, io2) = interpret' (so, store2, env) e2
-                in
-                    (CoolInt (i1 - i2), store3, print "Minus\n" >> io1 >> io2)
-        (Times line_no typ e1 e2) ->
-            let (CoolInt i1, store2, io1) = interpret' (so, store, env) e1
-                (CoolInt i2, store3, io2) = interpret' (so, store2, env) e2
-                in
-                    (CoolInt (i1 * i2), store3,  getLine >>= putStr >> io1 >> io2)
-        (Divide line_no typ e1 e2) ->
-            let (CoolInt i1, store2, io1) = interpret' (so, store, env) e1
-                (CoolInt i2, store3, io2) = interpret' (so, store2, env) e2
-                in
-                    (CoolInt (i1 `quot` i2), store3, io1 >> io2)
+                                            ) feat_list
+                    iD ln name = Identifier ln name
+                    assign_exprs = [Assign 0 t (iD 0 name) e | (Attribute name t (Just e)) <- init_feat_list]
+                    env' = Map.fromList assoc_l
+                    in do
+                        v2 <- foldM (eval' v1 env') store2 assign_exprs
+                        return v1
 
-        --(Let _ typ [] e2) ->
-        --    -- Evaluate e2
-        --(Let _ typ letBinds e2) ->
-        --    -- TODO does not handle multiple lets
-        --    -- deals with let bindings first
-        --    let (id, e1) = unpackLetBind $ head letBinds
-        --    -- operational semantics
-        --        (v1, store2) = interpret' (so, store, env) e1
-        --        loc = newloc store2
-        --        store3 = Map.insert loc v1 store2
-        --        env' = Map.insert id loc env
-        --        (v2, store4) = interpret' (so, store3, env') e2
-        --    in
-        --    -- conclusion
-        --    (v2, store4)
-            --(DynamicDispatch _ typ expr (Identifier _ meth_name) expr_list) ->
-        _ ->
-            -- This should eventually return errors
-            (CoolInt 10, store, return ())
+out_string :: Value -> Environment -> String -> StateWithIO ProgramState Value
+out_string so env str = do
+    -- The lift function allows you to be able to use the IO monad embedded in the state monad
+    lift $ putStrLn str
+    return (CoolBool True)
 
+out_int :: Value -> Environment -> Int -> StateWithIO ProgramState Value
+out_int so env int = do
+    lift $ putStrLn $ show int
+    return (CoolBool True)
+
+in_string :: Value -> Environment -> StateWithIO ProgramState Value
+in_string so env = do
+    input <- lift $ getLine
+    return (CoolString (length input) input)
+
+in_int :: Value -> Environment -> StateWithIO ProgramState Value
+in_int so env = do
+    input <- lift $ getLine
+    let int = read input :: Int in
+        return (CoolInt int)
 
 -- Main Execution
 main = do
@@ -594,9 +540,12 @@ main = do
             newM = New 0 "Main" (Identifier 0 "")
             mainMeth = DynamicDispatch 0 "Object" newM (Identifier 0 "main") []
             curried = (class_map, imp_map, parent_map)
-            (main, store, io) = interpret curried (_null, Map.empty, Map.empty) mainMeth
+            init_state = Map.empty
+            --(main, store, io) = interpret curried (_null, Map.empty, Map.empty) mainMeth
             in do
-                io
+                ret <- (evalStateT (eval (class_map, imp_map, parent_map) _null Map.empty mainMeth) init_state)
+                putStr $ show ret
+                --io
                 --putStrLn $ show $ main
             -- dispatch =
             -- res = interpret curried (main, store, main) dispatch
@@ -609,4 +558,3 @@ main = do
             --putStrLn "\nAnnotated AST:"
             --putStrLn $ show $ ast
 --            putStrLn "\nExecution:"
-
