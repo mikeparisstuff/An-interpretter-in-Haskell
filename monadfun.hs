@@ -389,6 +389,13 @@ parse_identifier (line_no : name : tl) =
 ------------------------------- Interpreter Functions ---------------------------------
 
 --------- Helper Functions ---------------
+impMapLookup :: ImpMap -> String -> String -> ([String], Expr)
+impMapLookup imp_map class_name f =
+    let (Just (Class name feats)) = find (\(Class name _) -> name == class_name) imp_map
+        (Just (Method _ formals _ expr)) = find (\(Method name _ _ _) -> name == f) feats
+        in
+        trace ("Looking for class with name: " ++ class_name) (trace ("Looking for method with name: " ++ f) (formals, expr))
+
 getClass :: ClassMap -> String -> Class
 getClass class_map name =
     let (Just clas) = find (\(Class cname _) -> cname == name) class_map in
@@ -430,6 +437,12 @@ checkForVoidAndReturnType line_no (Object typ _) = typ
 eval :: (ClassMap, ImpMap, ParentMap) -> Value -> Environment -> Expr -> StateWithIO ProgramState Value
 eval (cm, im, pm) so env expr =
     let eval' = eval (cm, im, pm)
+        threadExprs :: Value -> Environment -> [Expr] -> StateWithIO ProgramState [Value]
+        threadExprs so env [] = return []
+        threadExprs so env (expr : tl) = do
+            vi <- eval' so env expr
+            vals <- threadExprs so env tl
+            return ( vi : vals )
     in do
         case expr of
             (TrueBool _ _) ->
@@ -514,7 +527,35 @@ eval (cm, im, pm) so env expr =
                             lift $ putStrLn $ "Value of b: " ++ show val
                             lift $ putStrLn $ show vs
                             return v1
-
+            (DynamicDispatch line_no typ e0 (Identifier _ f) exprs) -> do
+                vals <- threadExprs so env exprs
+                v0 <- eval' so env e0
+                store <- get
+                let v0_typ = checkForVoidAndReturnType line_no v0
+                    (formals, e_n1) = impMapLookup im v0_typ f
+                    orig_l = newloc store
+                    ls = [orig_l .. (orig_l + (length formals) -1)]
+                    assoc_l = zip vals ls
+                    store_n3 = foldl (\a (val, li) -> Map.insert li val a) store assoc_l
+                    form_ls = zip formals ls
+                    env2 = checkForVoidAndCreateEnv line_no v0 form_ls in do
+                        put store_n3
+                        v_n1 <- eval' v0 env2 e_n1
+                        return v_n1
+            (SelfDispatch line_no typ (Identifier _ f) exprs) -> do
+                vals <- threadExprs so env exprs
+                store <- get
+                let so_typ = checkForVoidAndReturnType line_no so
+                    (formals, e_n1) = impMapLookup im so_typ f
+                    orig_l = newloc store
+                    ls = [orig_l .. (orig_l + (length formals) -1)]
+                    assoc_l = zip vals ls
+                    store_n3 = foldl (\a (val, li) -> Map.insert li val a) store assoc_l
+                    form_ls = zip formals ls
+                    env2 = checkForVoidAndCreateEnv line_no so form_ls in do
+                        put store_n3
+                        v_n1 <- eval' so env2 e_n1
+                        return v_n1
 -- Old way of trying this but it compiles.
 --threadStore so env acc e = do
 --    v <- eval' so env e
@@ -566,7 +607,7 @@ main = do
             init_state = Map.empty :: Map Location Value
             --(main, store, io) = interpret curried (_null, Map.empty, Map.empty) mainMeth
             in do
-                ret <- (evalStateT (eval (class_map, imp_map, parent_map) _null Map.empty newM) init_state)
+                ret <- (evalStateT (eval (class_map, imp_map, parent_map) _null Map.empty mainMeth) init_state)
                 putStr $ show ret
                 --io
                 --putStrLn $ show $ main
