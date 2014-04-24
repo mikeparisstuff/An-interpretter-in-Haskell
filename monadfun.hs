@@ -500,9 +500,31 @@ eval (cm, im, pm) so env expr =
                     iD ln name = Identifier ln name
                     assign_exprs = [Assign 0 t (iD 0 name) e | (Attribute name t (Just e)) <- init_feat_list]
                     env' = Map.fromList assoc_l
+
+                    threadStore :: Value -> Environment -> Expr -> StateWithIO ProgramState Value
+                    threadStore so env e = do
+                        eval' so env e
+                        --return (acc ++ [v])
+                    threadStore' = threadStore v1 env'
                     in do
-                        v2 <- foldM (eval' v1 env') store2 assign_exprs
-                        return v1
+                        put store2
+                        vs <- mapM (threadStore') assign_exprs
+                        s <- get
+                        let Just val = storeLookup s 1 in do
+                            lift $ putStrLn $ "Value of b: " ++ show val
+                            lift $ putStrLn $ show vs
+                            return v1
+
+-- Old way of trying this but it compiles.
+--threadStore so env acc e = do
+--    v <- eval' so env e
+--    return (acc ++ [v])
+--threadStore' = threadStore v1 env'
+--in do
+--    vs <- foldM (threadStore') [] assign_exprs
+--    lift $ putStrLn $ show vs
+--    return v1
+
 
 out_string :: Value -> Environment -> String -> StateWithIO ProgramState Value
 out_string so env str = do
@@ -539,11 +561,12 @@ main = do
             _null = Object "NULL" Map.empty
             newM = New 0 "Main" (Identifier 0 "")
             mainMeth = DynamicDispatch 0 "Object" newM (Identifier 0 "main") []
+            --mainMeth = Plus 0 "Int" (Integer 0 "Int" 5) (Plus 0 "Int" (Integer 0 "Int" 5) (Integer 0 "Int" 10))
             curried = (class_map, imp_map, parent_map)
-            init_state = Map.empty
+            init_state = Map.empty :: Map Location Value
             --(main, store, io) = interpret curried (_null, Map.empty, Map.empty) mainMeth
             in do
-                ret <- (evalStateT (eval (class_map, imp_map, parent_map) _null Map.empty mainMeth) init_state)
+                ret <- (evalStateT (eval (class_map, imp_map, parent_map) _null Map.empty newM) init_state)
                 putStr $ show ret
                 --io
                 --putStrLn $ show $ main
