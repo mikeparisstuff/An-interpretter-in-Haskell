@@ -469,6 +469,49 @@ eval (cm, im, pm) so env expr =
                 CoolInt i1 <- eval' so env e1
                 CoolInt i2 <- eval' so env e2
                 return (CoolInt (i1 `quot` i2))
+            (Equal line_no typ e1 e2) -> do
+                v1 <- eval' so env e1
+                v2 <- eval' so env e2
+                case (v1, v2) of
+                    (CoolInt i1, CoolInt i2) ->
+                        let tf = i1 == i2 in do
+                            return (CoolBool tf)
+                    _ -> error "Comaparing non ints in equals"
+            (LessThan line_no typ e1 e2) -> do
+                v1 <- eval' so env e1
+                v2 <- eval' so env e2
+                case (v1, v2) of
+                    (CoolInt i1, CoolInt i2) ->
+                        let tf = i1 < i2 in do
+                            return (CoolBool tf)
+                    _ -> error "Comaparing non ints in less than"
+            (LessEqual line_no typ e1 e2) -> do
+                v1 <- eval' so env e1
+                v2 <- eval' so env e2
+                case (v1, v2) of
+                    (CoolInt i1, CoolInt i2) ->
+                        let tf = i1 <= i2 in do
+                            return (CoolBool tf)
+                    _ -> error "Comaparing non ints in equals"
+            (Negate line_no typ e1) -> do
+                v1 <- eval' so env e1
+                case v1 of
+                    (CoolInt i) -> do
+                        return (CoolInt (-i))
+                    _ -> error "Calling negate on non int"
+            (Not line_no typ e1) -> do
+                v1 <- eval' so env e1
+                case v1 of
+                    (CoolBool b) -> do
+                        return (CoolBool (not b))
+                    _ -> error "Calling not on non bool"
+            (IsVoid line_no typ e1) -> do
+                v1 <- eval' so env e1
+                case v1 of
+                    Void -> do
+                        return (CoolBool True)
+                    _ -> do
+                        return (CoolBool False)
             (Assign _ typ (Identifier _ name) expr) -> do
                 v1 <- eval' so env expr
                 store <- get
@@ -556,6 +599,33 @@ eval (cm, im, pm) so env expr =
                         put store_n3
                         v_n1 <- eval' so env2 e_n1
                         return v_n1
+            (StaticDispatch line_no typ e0 (Identifier _ name) (Identifier _ f) exprs) -> do
+                vals <- threadExprs so env exprs
+                v0 <- eval' so env e0
+                store <- get
+                let v0_typ = checkForVoidAndReturnType line_no v0
+                    (formals, e_n1) = impMapLookup im name f
+                    orig_l = newloc store
+                    ls = [orig_l .. (orig_l + (length formals) -1)]
+                    assoc_l = zip vals ls
+                    store_n3 = foldl (\a (val, li) -> Map.insert li val a) store assoc_l
+                    form_ls = zip formals ls
+                    env2 = checkForVoidAndCreateEnv line_no v0 form_ls in do
+                        put store_n3
+                        v_n1 <- eval' v0 env2 e_n1
+                        return v_n1
+            (If line_no typ e1 e2 e3) -> do
+                v1 <- eval' so env e1
+                case v1 of
+                    (CoolBool True) -> do
+                        v2 <- eval' so env e2
+                        return v2
+                    (CoolBool False) -> do
+                        v3 <- eval' so env e3
+                        return v3
+            (Block line_no typ exprs) -> do
+                vals <- threadExprs so env exprs
+                return (last vals)
 -- Old way of trying this but it compiles.
 --threadStore so env acc e = do
 --    v <- eval' so env e
