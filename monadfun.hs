@@ -626,6 +626,16 @@ eval (cm, im, pm) so env expr =
             (Block line_no typ exprs) -> do
                 vals <- threadExprs so env exprs
                 return (last vals)
+            (While line_no typ e1 e2) -> do
+                v1 <- eval' so env e1
+                case v1 of
+                    (CoolBool True) -> do
+                        v2 <- eval' so env e2
+                        eval' so env (While line_no typ e1 e2)
+                        return Void
+                    (CoolBool False) -> do
+                        return Void
+            --(Let line_no typ (bind : rem_binds) e2) -> do
 -- Old way of trying this but it compiles.
 --threadStore so env acc e = do
 --    v <- eval' so env e
@@ -685,10 +695,10 @@ main = do
             -- res = interpret curried (main, store, main) dispatch
             --putStrLn $ show $ class_map
             -- multiple putstrlns do not work for whatever reason
-            --putStrLn "\nImplementation Map:"
-            --putStrLn $ show $ imp_map
+                putStrLn "\nImplementation Map:"
+                putStrLn $ show $ imp_map
             --putStrLn "\nParent Map:"
             --putStrLn $ show $ parent_map
             --putStrLn "\nAnnotated AST:"
             --putStrLn $ show $ ast
---            putStrLn "\nExecution:"
+            --putStrLn "\nExecution:"

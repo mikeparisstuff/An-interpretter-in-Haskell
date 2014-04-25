@@ -8,6 +8,7 @@ class Main inherits IO{
             self.iftrue();
             self.iffalse();
             wooooookie();
+            test_loop();
         }
 	};
     wooooookie() : Object {
@@ -27,6 +28,14 @@ class Main inherits IO{
         else
             "Should be false correct"
         fi
+    };
+    test_outs() : Object {
+        out_string("Printing Some stuff in Main Wookie")
+    };
+    test_loop() : Object {
+        while a < 10 loop
+            a <- a + 1
+        pool
     };
 };
 
