@@ -1,7 +1,7 @@
 import System.IO
 import System.Environment
 import Debug.Trace
-import Data.List (find)
+import Data.List (find, lookup)
 import qualified Data.List as List
 import Data.Map (Map)
 import qualified Data.Map as Map
@@ -346,12 +346,20 @@ parse_expr xs = case xs of
             (bindings, rem_input) = parse_binding_list nb tl
             (expr, rem_input_2) = parse_expr rem_input
         in ( (Let n expr_type bindings expr), rem_input_2 )
-    (line_no : expr_type : "case" : num_elems : tl) ->
-        let ln = read line_no :: Int
+    (line_no : expr_type : "case" : tl) ->
+        let (expr, rem_input) = parse_expr tl
+            (num_elems : rem_input_2) = rem_input
+            ln = read line_no :: Int
             ne = read num_elems :: Int
-            (expr, rem_input) = parse_expr tl
-            (case_elems, rem_input_2) = parse_case_elements ne rem_input
-        in ( (Case ln expr_type expr case_elems), rem_input_2)
+            --(expr, rem_input) = parse_expr tl
+            (case_elems, rem_input_3) = parse_case_elements ne rem_input_2
+        in ( (Case ln expr_type expr case_elems), rem_input_3)
+    --(line_no : expr_type : "case" : num_elems : tl) ->
+    --    let ln = read line_no :: Int
+    --        ne = read num_elems :: Int
+    --        (expr, rem_input) = parse_expr tl
+    --        (case_elems, rem_input_2) = parse_case_elements ne rem_input
+    --    in ( (Case ln expr_type expr case_elems), rem_input_2)
     _ -> error "could not match expr"
 
 parse_case_elements 0 tl = ([], tl)
@@ -394,7 +402,8 @@ impMapLookup imp_map class_name f =
     let (Just (Class name feats)) = find (\(Class name _) -> name == class_name) imp_map
         (Just (Method _ formals _ expr)) = find (\(Method name _ _ _) -> name == f) feats
         in
-        trace ("Looking for class with name: " ++ class_name) (trace ("Looking for method with name: " ++ f) (formals, expr))
+        (formals, expr)
+        --trace ("Looking for class with name: " ++ class_name) (trace ("Looking for method with name: " ++ f) (formals, expr))
 
 getClass :: ClassMap -> String -> Class
 getClass class_map name =
@@ -431,6 +440,9 @@ checkForVoidAndCreateEnv line_no (Object _ obj_map) formal_locs =
 checkForVoidAndReturnType :: Int -> Value -> String
 checkForVoidAndReturnType line_no Void = error ("ERROR: " ++ (show line_no) ++ ": Exception: Dispatch on void.")
 checkForVoidAndReturnType line_no (Object typ _) = typ
+checkForVoidAndReturnType line_no (CoolString _ _) = "String"
+checkForVoidAndReturnType line_no (CoolInt _) = "Int"
+checkForVoidAndReturnType line_no (CoolBool _) = "Bool"
 
 
 --------- Evaluation ----------------
@@ -567,8 +579,8 @@ eval (cm, im, pm) so env expr =
                         vs <- mapM (threadStore') assign_exprs
                         s <- get
                         let Just val = storeLookup s 1 in do
-                            lift $ putStrLn $ "Value of b: " ++ show val
-                            lift $ putStrLn $ show vs
+                            --lift $ putStrLn $ "Value of b: " ++ show val
+                            --lift $ putStrLn $ show vs
                             return v1
             (DynamicDispatch line_no typ e0 (Identifier _ f) exprs) -> do
                 vals <- threadExprs so env exprs
@@ -635,6 +647,67 @@ eval (cm, im, pm) so env expr =
                         return Void
                     (CoolBool False) -> do
                         return Void
+            (Case line_no typ e0 elems) -> do
+                v0 <- eval' so env e0
+                let types = foldl (\a (CaseElement _ (Identifier _ typ) _) -> typ : a) [] elems
+                    closest_ans :: ParentMap -> String -> [String] -> String
+                    closest_ans pmap typ typs =
+                        let parent = case (lookup typ pmap) of
+                                Just p -> p
+                                Nothing -> error "Should always find a parent in parent map" in
+                            case (typ `elem` typs) of
+                                True -> typ
+                                False -> closest_ans pmap parent typs
+                    ti = closest_ans pm (checkForVoidAndReturnType line_no v0) types
+                    (idi, ei) = case (find (\(CaseElement _ (Identifier _ typ) _) -> typ == ti) elems) of
+                        Just (CaseElement (Identifier _ name) _ expr) -> (name, expr)
+                        Nothing -> error "This should never happen in Case"
+                    in do
+                        s2 <- get
+                        let l0 = newloc s2
+                            s3 = Map.insert l0 v0 s2 in do
+                                put s3
+                                eval' so (Map.insert idi l0 env) ei
+            (Let line_no typ [] e2) -> eval' so env e2
+            (Let line_no typ ((LetBinding (Identifier _ name) (Identifier _ t1) e1) : rem_binds) e2) -> do
+                case e1 of
+                    Just expr -> do
+                        v1 <- eval' so env expr
+                        s2 <- get
+                        let l1 = newloc s2
+                            s3 = Map.insert l1 v1 s2
+                            in do
+                                put s3
+                                eval' so (Map.insert name l1 env) (Let line_no typ rem_binds e2)
+                    Nothing -> do
+                        s2 <- get
+                        let v1 = default_value t1
+                            l1 = newloc s2
+                            s3 = Map.insert l1 v1 s2
+                            in do
+                                put s3
+                                eval' so (Map.insert name l1 env) (Let line_no typ rem_binds e2)
+            (Internal line_no typ name) -> do
+                case name of
+                    "IO.out_string" -> do
+                        s <- get
+                        let (Just l) = Map.lookup "x" env
+                            (Just (CoolString len str)) = Map.lookup l s
+                            in do
+                                out_string so env str
+                    "IO.out_int" -> do
+                        s <- get
+                        let (Just l) = Map.lookup "x" env
+                            (Just (CoolInt i)) = Map.lookup l s
+                            in do
+                                out_int so env i
+                    "IO.in_string" -> do
+                        in_string so env
+                    "IO.in_int" -> do
+                        in_int so env
+
+--data CaseElement = CaseElement NameIdentifier TypeIdentifier Expr deriving(Show)
+--            |   Case LineNo Type Expr [CaseElement]
             --(Let line_no typ (bind : rem_binds) e2) -> do
 -- Old way of trying this but it compiles.
 --threadStore so env acc e = do
@@ -669,6 +742,11 @@ in_int so env = do
     let int = read input :: Int in
         return (CoolInt int)
 
+abort :: Value -> Environment -> StateWithIO ProgramState Value
+abort so env = do
+    error "abort"
+
+
 -- Main Execution
 main = do
     args <- getArgs
@@ -688,17 +766,18 @@ main = do
             --(main, store, io) = interpret curried (_null, Map.empty, Map.empty) mainMeth
             in do
                 ret <- (evalStateT (eval (class_map, imp_map, parent_map) _null Map.empty mainMeth) init_state)
-                putStr $ show ret
+                --putStr $ show ret
+                putStr ""
                 --io
                 --putStrLn $ show $ main
             -- dispatch =
             -- res = interpret curried (main, store, main) dispatch
             --putStrLn $ show $ class_map
             -- multiple putstrlns do not work for whatever reason
-                putStrLn "\nImplementation Map:"
-                putStrLn $ show $ imp_map
-            --putStrLn "\nParent Map:"
-            --putStrLn $ show $ parent_map
+                --putStrLn "\nImplementation Map:"
+                --putStrLn $ show $ imp_map
+                --putStrLn "\nParent Map:"
+                --putStrLn $ show $ parent_map
             --putStrLn "\nAnnotated AST:"
             --putStrLn $ show $ ast
             --putStrLn "\nExecution:"

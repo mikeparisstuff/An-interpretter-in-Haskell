@@ -3,14 +3,29 @@ class Main inherits IO{
     c : Int;
     b : Int <- a * 2;
 	main() : Object {
+        let num : Int <- in_int() in
         {
             (new Dog).bark();
             self.iftrue();
             self.iffalse();
             wooooookie();
             test_loop();
+            out_string("hello");
+            out_int(num);
         }
 	};
+    case_check() : Object {
+        case (new Dog) of
+            d : Dog => "Correct";
+            d : Main => "Incorrect";
+        esac
+    };
+    let_check() : Object {
+        let test : Int <- 2,
+            test2 : String <- "Hello",
+            test3 : String,
+            test4 : Dog in test4
+    };
     wooooookie() : Object {
         --(a * b + 2) * 10 + c + b
         "Main"
