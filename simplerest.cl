@@ -3,35 +3,40 @@ class Main inherits IO{
     c : Int;
     b : Int <- a * 2;
     d : Dog;
+    x : String <- "yo";
 	main() : Object {
-        let num : Int <- in_int(),
-            num2 : Int <- num.copy() in
-        {
-            32 / 0;
-            out_int(num);
-            num2 <- num2 + 2;
-            out_int(num);
-            (new Dog).bark();
-            self.iftrue();
-            self.iffalse();
-            wooooookie();
-            test_loop();
-            out_string("hello");
-            out_int(num);
-            case_check(d);
-            out_string((new Dog).type_name());
-            out_string(a.type_name());
-            str_check();
-            doh();
-            self.doh();
-            (new Main).doh();
-            self@Main.doh();
-            if cool_eq_check() then
-                out_string("Equal\n")
-            else
-                out_string("Not Equal\n")
-            fi;
-        }
+        let num : Int <- 3,
+            num2 : Int <- num.copy(),
+            y : Int <- 5,
+            z : String <- "Hello" in
+        -- {
+            out_string("LOLOLOL")
+            -- out_int(y);
+            -- 32 / 0;
+            -- out_int(num);
+            -- num2 <- num2 + 2;
+            -- out_int(num);
+            -- (new Dog).bark();
+            -- self.iftrue();
+            -- self.iffalse();
+            -- wooooookie();
+            -- test_loop();
+            -- out_string("hello");
+            -- out_int(num);
+            -- case_check(d);
+            -- out_string((new Dog).type_name());
+            -- out_string(a.type_name());
+            -- str_check();
+            -- doh();
+            -- self.doh();
+            -- (new Main).doh();
+            -- self@Main.doh();
+            -- if cool_eq_check() then
+            --     out_string("Equal\n")
+            -- else
+            --     out_string("Not Equal\n")
+            -- fi;
+        -- }
 	};
     doh() : Int { (let i: Int <- a in { a <- a + 1; i; } ) };
     str_check() : Object {

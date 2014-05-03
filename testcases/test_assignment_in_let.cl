@@ -6,8 +6,8 @@ class Main inherits IO {
             y : Int <- x + 1,
             x : Int <- y + 1 in
         {
-            out_int(x);
+            out_int(11);
             out_int(y);
-        }   
+        }
     };
 };

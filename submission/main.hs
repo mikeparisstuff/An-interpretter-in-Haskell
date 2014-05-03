@@ -96,18 +96,7 @@ data CoolError = Abort
 type ThrowsError = Either CoolError
 
 ---------------------------- Error Funcs ------------------------------------------
-showError :: CoolError -> String
-showError Abort = "abort\n"
-showError (CaseNotMatch s) = "No matching case in case expr: " ++ s
-showError (DispatchOnVoid s) = "Dispatch on void: " ++ s
-showError (IndexOOR s) = "Index out of range on concat: " ++ s
-
-instance Show CoolError where show = showError
-
-instance Error CoolError where
-    noMsg = Default "An error occurred"
-    strMsg = Default
-
+--
 ---------------------------- Class Map ---------------------------------------------
 parse_cm [] = error "empty input file"
 parse_cm ("class_map": num_classes : tl) =
@@ -454,19 +443,25 @@ default_value typ = case typ of
     "Bool" -> CoolBool False
     _     -> Void
 
-checkForVoidAndCreateEnv :: Int -> Value -> [(String, Int)] -> Environment
-checkForVoidAndCreateEnv line_no Void formal_locs = error ("ERROR: " ++ (show line_no) ++ ": Exception: Dispatch on void.")
-checkForVoidAndCreateEnv line_no (Object _ obj_map) formal_locs =
+createEnv :: Int -> Value -> [(String, Int)] -> Environment
+createEnv line_no (Object _ obj_map) formal_locs =
     let formal_map = Map.fromList formal_locs
-        env2 = Map.union obj_map formal_map in env2
-checkForVoidAndCreateEnv line_no _ formal_locs = Map.fromList formal_locs
+        env2 = Map.union formal_map obj_map in env2
+createEnv line_no _ formal_locs = Map.fromList formal_locs
 
 checkForVoidAndReturnType :: Int -> Value -> String
-checkForVoidAndReturnType line_no Void = error ("ERROR: " ++ (show line_no) ++ ": Exception: Dispatch on void.")
+checkForVoidAndReturnType line_no Void = error ("ERROR: " ++ (show line_no) ++ ": Exception: dispatch on void")
 checkForVoidAndReturnType line_no (Object typ _) = typ
 checkForVoidAndReturnType line_no (CoolString _ _) = "String"
 checkForVoidAndReturnType line_no (CoolInt _) = "Int"
 checkForVoidAndReturnType line_no (CoolBool _) = "Bool"
+
+
+checkForVoid :: Value -> Int -> StateWithIO ProgramState Value
+checkForVoid Void line_no = do
+        lift $ putStrLn $ "ERROR: " ++ (show line_no) ++ ": Exception: Case or Dispatch on void."
+        lift $ exitSuccess
+checkForVoid s _ = return s
 
 
 --------- Evaluation ----------------
@@ -504,7 +499,11 @@ eval (cm, im, pm) so env expr =
             (Divide line_no typ e1 e2) -> do
                 CoolInt i1 <- eval' so env e1
                 CoolInt i2 <- eval' so env e2
-                return (CoolInt (i1 `quot` i2))
+                if i2 == 0 then do
+                    lift $ putStrLn $ "ERROR: " ++ (show line_no) ++ ": Exception: Division by Zero"
+                    lift $ exitSuccess
+                else do
+                    return (CoolInt (i1 `quot` i2))
             (Equal line_no typ e1 e2) -> do
                 v1 <- eval' so env e1
                 v2 <- eval' so env e2
@@ -517,9 +516,15 @@ eval (cm, im, pm) so env expr =
                             return (CoolBool tf)
                     (CoolBool b1, CoolBool b2) ->
                         return (CoolBool (b1 == b2))
-                    (Object t1 om1, Object t2 om2) ->
+                    (Object t1 om1, Object t2 om2) -> do
+                        --lift $ putStrLn "\nom1: "
+                        --lift $ putStrLn (show om1)
+                        --lift $ putStrLn "\nom2: "
+                        --lift $ putStrLn (show om2)
                         return (CoolBool (om1 == om2))
-                    _ -> error "Comaparing non ints in equals"
+                    (Void, Void) ->
+                        return (CoolBool True)
+                    _ -> return (CoolBool False)
             (LessThan line_no typ e1 e2) -> do
                 v1 <- eval' so env e1
                 v2 <- eval' so env e2
@@ -547,6 +552,8 @@ eval (cm, im, pm) so env expr =
                         case om1 == om2 of
                             True -> return (CoolBool True)
                             False -> return (CoolBool False)
+                    (Void, Void) ->
+                        return (CoolBool True)
                     _ -> return (CoolBool False)
             (Negate line_no typ e1) -> do
                 v1 <- eval' so env e1
@@ -591,8 +598,9 @@ eval (cm, im, pm) so env expr =
                             t -> t
                     (Class name feat_list) = getClass cm t0
                     orig_l = newloc store
-                    ls = [orig_l .. (orig_l + (length feat_list) - 1)]
-                    assoc_l = zip [var | (Attribute var _ _) <- feat_list] ls
+                    ls = [orig_l .. (orig_l + (length feat_list))]
+                    vars = [var | (Attribute var _ _) <- feat_list]
+                    assoc_l = zip (typ : vars) ls
                     -- assoc_t holds assoc list from var -> type name
                     assoc_t = zip [var | (Attribute var _ _) <- feat_list] [typ | (Attribute _ typ _) <- feat_list]
                     v1 = Object t0 (Map.fromList assoc_l)
@@ -629,6 +637,7 @@ eval (cm, im, pm) so env expr =
                 vals <- threadExprs so env exprs
                 v0 <- eval' so env e0
                 store <- get
+                unused <- checkForVoid v0 line_no
                 let v0_typ = checkForVoidAndReturnType line_no v0
                     (formals, e_n1) = impMapLookup im v0_typ f
                     orig_l = newloc store
@@ -636,13 +645,14 @@ eval (cm, im, pm) so env expr =
                     assoc_l = zip vals ls
                     store_n3 = foldl (\a (val, li) -> Map.insert li val a) store assoc_l
                     form_ls = zip formals ls
-                    env2 = checkForVoidAndCreateEnv line_no v0 form_ls in do
+                    env2 = createEnv line_no v0 form_ls in do
                         put store_n3
                         v_n1 <- eval' v0 env2 e_n1
                         return v_n1
             (SelfDispatch line_no typ (Identifier _ f) exprs) -> do
                 vals <- threadExprs so env exprs
                 store <- get
+                unused <- checkForVoid so line_no
                 let so_typ = checkForVoidAndReturnType line_no so
                     (formals, e_n1) = impMapLookup im so_typ f
                     orig_l = newloc store
@@ -650,7 +660,13 @@ eval (cm, im, pm) so env expr =
                     assoc_l = zip vals ls
                     store_n3 = foldl (\a (val, li) -> Map.insert li val a) store assoc_l
                     form_ls = zip formals ls
-                    env2 = checkForVoidAndCreateEnv line_no so form_ls in do
+                    env2 = createEnv line_no so form_ls in do
+                        --lift $ putStrLn "\nPrinting Self Env1:"
+                        --lift $ putStr (show env)
+                        --lift $ putStrLn "\nPrinting Self Env2:"
+                        --lift $ putStr (show env2)
+                        --lift $ putStrLn "\nLooking at store in dispatch: "
+                        --lift $ putStrLn (show store_n3)
                         put store_n3
                         v_n1 <- eval' so env2 e_n1
                         return v_n1
@@ -658,6 +674,7 @@ eval (cm, im, pm) so env expr =
                 vals <- threadExprs so env exprs
                 v0 <- eval' so env e0
                 store <- get
+                unused <- checkForVoid v0 line_no
                 let v0_typ = checkForVoidAndReturnType line_no v0
                     (formals, e_n1) = impMapLookup im name f
                     orig_l = newloc store
@@ -665,7 +682,7 @@ eval (cm, im, pm) so env expr =
                     assoc_l = zip vals ls
                     store_n3 = foldl (\a (val, li) -> Map.insert li val a) store assoc_l
                     form_ls = zip formals ls
-                    env2 = checkForVoidAndCreateEnv line_no v0 form_ls in do
+                    env2 = createEnv line_no v0 form_ls in do
                         put store_n3
                         v_n1 <- eval' v0 env2 e_n1
                         return v_n1
@@ -692,6 +709,7 @@ eval (cm, im, pm) so env expr =
                         return Void
             (Case line_no typ e0 elems) -> do
                 v0 <- eval' so env e0
+                unused <- checkForVoid v0 line_no
                 let types = foldl (\a (CaseElement _ (Identifier _ typ) _) -> typ : a) [] elems
                     closest_ans :: ParentMap -> String -> [String] -> String
                     closest_ans pmap typ typs =
@@ -712,7 +730,14 @@ eval (cm, im, pm) so env expr =
                                 put s3
                                 v1 <- eval' so (Map.insert idi l0 env) ei
                                 return v1
-            (Let line_no typ [] e2) -> eval' so env e2
+            (Let line_no typ [] e2) -> do
+                s <- get
+                --lift $ putStrLn "\nLooking at env in let base case:"
+                --lift $ putStrLn (show env)
+                --lift $ putStrLn "Looking at store in let base case:"
+                --lift $ putStrLn (show s)
+                --lift $ putStrLn $ "Evaluating expression: " ++ (show e2)
+                eval' so env e2
             (Let line_no typ ((LetBinding (Identifier _ name) (Identifier _ t1) e1) : rem_binds) e2) -> do
                 case e1 of
                     Just expr -> do
@@ -720,17 +745,27 @@ eval (cm, im, pm) so env expr =
                         s2 <- get
                         let l1 = newloc s2
                             s3 = Map.insert l1 v1 s2
+                            env2 = Map.insert name l1 env
                             in do
+                                --lift $ putStrLn "\nLooking at env in expr let:"
+                                --lift $ putStrLn (show env2)
+                                --lift $ putStrLn "Looking at store in expr let:"
+                                --lift $ putStrLn (show s3)
                                 put s3
-                                eval' so (Map.insert name l1 env) (Let line_no typ rem_binds e2)
+                                eval' so env2 (Let line_no typ rem_binds e2)
                     Nothing -> do
                         s2 <- get
                         let v1 = default_value t1
                             l1 = newloc s2
                             s3 = Map.insert l1 v1 s2
+                            env2 = Map.insert name l1 env
                             in do
+                                --lift $ putStrLn "\nLooking at env in non-expr let:"
+                                --lift $ putStrLn (show env2)
+                                --lift $ putStrLn "Looking at store in non-expr let:"
+                                --lift $ putStrLn (show s3)
                                 put s3
-                                eval' so (Map.insert name l1 env) (Let line_no typ rem_binds e2)
+                                eval' so env2 (Let line_no typ rem_binds e2)
             (Internal line_no typ name) -> do
                 case name of
                     "IO.out_string" -> do
@@ -739,6 +774,10 @@ eval (cm, im, pm) so env expr =
                             (Just (CoolString len str)) = Map.lookup l s
                             s' = '"' : str ++ "\""
                             in do
+                                --lift $ putStrLn "\nLooking at env in out_string: "
+                                --lift $ putStrLn (show env)
+                                --lift $ putStrLn "\nLooking at store in out_string: "
+                                --lift $ putStrLn (show s)
                                 out_string so env (read s')
                     "IO.out_int" -> do
                         s <- get
@@ -794,12 +833,12 @@ out_string so env str = do
     -- The lift function allows you to be able to use the IO monad embedded in the state monad
     lift $ putStr str
     lift $ hFlush stdout
-    return (CoolBool True)
+    return so
 
 out_int :: Value -> Environment -> Int -> StateWithIO ProgramState Value
 out_int so env int = do
     lift $ putStr $ show int
-    return (CoolBool True)
+    return so
 
 in_string :: Value -> Environment -> StateWithIO ProgramState Value
 in_string so env = do
@@ -838,7 +877,10 @@ cool_substr :: Value -> Environment -> Int -> Int -> StateWithIO ProgramState Va
 cool_substr (CoolString len s) env i l
     | (i <= len && i >= 0) && ( (i + l) <= len && l >= 0) = let substr = take l . drop i $ s in
         return (CoolString (length substr) substr)
-    | otherwise = error "Substring out of bounds"
+    | otherwise = do
+        lift $ putStrLn "ERROR: 0: Exception: String.substr out of range"
+        lift $ exitSuccess
+
 
 -- Main Execution
 main = do
@@ -860,7 +902,7 @@ main = do
             in do
                 ret <- (evalStateT (eval (class_map, imp_map, parent_map) _null Map.empty mainMeth) init_state)
                 --putStr $ show ret
-                putStr ""
+                return ()
                 --io
                 --putStrLn $ show $ main
             -- dispatch =
