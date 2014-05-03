@@ -21,7 +21,6 @@ identifier
 39
 self
 4
-Foo
 40
 n
 40
@@ -31,7 +30,6 @@ Foo
 new
 40
 Foo
-Bar
 41
 n
 41
@@ -41,7 +39,6 @@ Bar
 new
 41
 Bar
-Razz
 42
 n
 42
@@ -51,7 +48,6 @@ Razz
 new
 42
 Razz
-Bar
 43
 n
 43
@@ -82,7 +78,6 @@ identifier
 4
 self
 3
-Bar
 5
 n
 5
@@ -92,7 +87,6 @@ Bar
 new
 5
 Bar
-Razz
 6
 n
 6
@@ -102,7 +96,6 @@ Razz
 new
 6
 Razz
-Bar
 7
 n
 7
@@ -170,7 +163,6 @@ identifier
 26
 self
 2
-Bar
 27
 n
 27
@@ -179,7 +171,6 @@ Razz
 Bar
 new
 27
-Bar
 Bar
 28
 n
@@ -291,7 +282,6 @@ identifier
 39
 self
 4
-Foo
 40
 n
 40
@@ -301,7 +291,6 @@ Foo
 new
 40
 Foo
-Bar
 41
 n
 41
@@ -311,7 +300,6 @@ Bar
 new
 41
 Bar
-Razz
 42
 n
 42
@@ -321,7 +309,6 @@ Razz
 new
 42
 Razz
-Bar
 43
 n
 43
@@ -363,7 +350,6 @@ identifier
 39
 self
 4
-Foo
 40
 n
 40
@@ -373,7 +359,6 @@ Foo
 new
 40
 Foo
-Bar
 41
 n
 41
@@ -383,7 +368,6 @@ Bar
 new
 41
 Bar
-Razz
 42
 n
 42
@@ -393,7 +377,6 @@ Razz
 new
 42
 Razz
-Bar
 43
 n
 43
@@ -424,7 +407,6 @@ identifier
 4
 self
 3
-Bar
 5
 n
 5
@@ -434,7 +416,6 @@ Bar
 new
 5
 Bar
-Razz
 6
 n
 6
@@ -444,7 +425,6 @@ Razz
 new
 6
 Razz
-Bar
 7
 n
 7
@@ -561,7 +541,6 @@ identifier
 39
 self
 4
-Foo
 40
 n
 40
@@ -571,7 +550,6 @@ Foo
 new
 40
 Foo
-Bar
 41
 n
 41
@@ -581,7 +559,6 @@ Bar
 new
 41
 Bar
-Razz
 42
 n
 42
@@ -591,7 +568,6 @@ Razz
 new
 42
 Razz
-Bar
 43
 n
 43
@@ -622,7 +598,6 @@ identifier
 4
 self
 3
-Bar
 5
 n
 5
@@ -632,7 +607,6 @@ Bar
 new
 5
 Bar
-Razz
 6
 n
 6
@@ -642,7 +616,6 @@ Razz
 new
 6
 Razz
-Bar
 7
 n
 7
@@ -710,7 +683,6 @@ identifier
 26
 self
 2
-Bar
 27
 n
 27
@@ -719,7 +691,6 @@ Razz
 Bar
 new
 27
-Bar
 Bar
 28
 n
@@ -1552,7 +1523,6 @@ identifier
 4
 self
 3
-Bar
 5
 n
 5
@@ -1562,7 +1532,6 @@ Bar
 new
 5
 Bar
-Razz
 6
 n
 6
@@ -1572,7 +1541,6 @@ Razz
 new
 6
 Razz
-Bar
 7
 n
 7
@@ -1724,7 +1692,6 @@ identifier
 26
 self
 2
-Bar
 27
 n
 27
@@ -1733,7 +1700,6 @@ Razz
 Bar
 new
 27
-Bar
 Bar
 28
 n
@@ -1837,7 +1803,6 @@ identifier
 39
 self
 4
-Foo
 40
 n
 40
@@ -1847,7 +1812,6 @@ Foo
 new
 40
 Foo
-Bar
 41
 n
 41
@@ -1857,7 +1821,6 @@ Bar
 new
 41
 Bar
-Razz
 42
 n
 42
@@ -1867,7 +1830,6 @@ Razz
 new
 42
 Razz
-Bar
 43
 n
 43

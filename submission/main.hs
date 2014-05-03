@@ -793,6 +793,7 @@ out_string :: Value -> Environment -> String -> StateWithIO ProgramState Value
 out_string so env str = do
     -- The lift function allows you to be able to use the IO monad embedded in the state monad
     lift $ putStr str
+    lift $ hFlush stdout
     return (CoolBool True)
 
 out_int :: Value -> Environment -> Int -> StateWithIO ProgramState Value

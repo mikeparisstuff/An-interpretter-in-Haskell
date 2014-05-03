@@ -20,6 +20,10 @@ class Main inherits IO{
             out_string((new Dog).type_name());
             out_string(a.type_name());
             str_check();
+            doh();
+            self.doh();
+            (new Main).doh();
+            self@Main.doh();
             if cool_eq_check() then
                 out_string("Equal\n")
             else
@@ -27,6 +31,7 @@ class Main inherits IO{
             fi;
         }
 	};
+    doh() : Int { (let i: Int <- a in { a <- a + 1; i; } ) };
     str_check() : Object {
         let ts : String <- "Lololol",
             ts2 : String <- " Rofl" in

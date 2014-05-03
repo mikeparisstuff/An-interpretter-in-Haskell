@@ -8,7 +8,7 @@ inherit from List and define the same operations, but now as
 appropriate to the empty list (for the Nil class) and for cons cells (for
 the Cons class).
 
-The Main class puts all of this code through the following silly 
+The Main class puts all of this code through the following silly
 test exercise:
 
    1. prompt for a number N
@@ -18,12 +18,12 @@ test exercise:
    5. print the sorted list
 
 Because the sort used is a quadratic space insertion sort, sorting
-moderately large lists can be quite slow. 
+moderately large lists can be quite slow.
 *)
 
-Class List inherits IO { 
+Class List inherits IO {
         (* Since abort() returns Object, we need something of
-	   type Bool at the end of the block to satisfy the typechecker. 
+	   type Bool at the end of the block to satisfy the typechecker.
            This code is unreachable, since abort() halts the program. *)
 	isNil() : Bool { { abort(); true; } };
 
@@ -33,7 +33,7 @@ Class List inherits IO {
 	  )
 	};
 
-	(* 
+	(*
 	   Since abort "returns" type Object, we have to add
 	   an expression of type Int here to satisfy the typechecker.
 	   This code is, of course, unreachable.
@@ -49,13 +49,13 @@ Class List inherits IO {
 	insert(i : Int) : List { cdr() };
 
 	rcons(i : Int) : List { cdr() };
-	
+
 	print_list() : Object { abort() };
 };
 
 Class Cons inherits List {
 	xcar : Int;  -- We keep the car in cdr in attributes.
-	xcdr : List; 
+	xcdr : List;
 
 	isNil() : Bool { false };
 
@@ -66,7 +66,7 @@ Class Cons inherits List {
 	    self;
 	  }
 	};
-	  
+
 	car() : Int { xcar };
 
 	cdr() : List { xcdr };
@@ -120,17 +120,17 @@ Class Main inherits IO {
 	    {
 		l <- new Nil;
 		(let j : Int <- 0 in
-		   while j < i 
-		   loop 
+		   while j < i
+		   loop
 		     {
 		       l <- (new Cons).init(j,l);
 		       j <- j + 1;
-		     } 
+		     }
 		   pool
 		);
 		l;
 	    }
-	};		
+	};
 
 	main() : Object {
 	   {
@@ -138,7 +138,7 @@ Class Main inherits IO {
 	     iota(in_int()).rev().sort().print_list();
 	   }
 	};
-};			    
+};
 
 
 
