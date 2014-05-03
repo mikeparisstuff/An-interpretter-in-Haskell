@@ -3,8 +3,12 @@ class Main inherits IO{
     c : Int;
     b : Int <- a * 2;
 	main() : Object {
-        let num : Int <- in_int() in
+        let num : Int <- in_int(),
+            num2 : Int <- num.copy() in
         {
+            out_int(num);
+            num2 <- num2 + 2;
+            out_int(num);
             (new Dog).bark();
             self.iftrue();
             self.iffalse();
@@ -12,11 +16,41 @@ class Main inherits IO{
             test_loop();
             out_string("hello");
             out_int(num);
+            case_check();
+            out_string((new Dog).type_name());
+            out_string(a.type_name());
+            str_check();
+            if cool_eq_check() then
+                out_string("Equal\n")
+            else
+                out_string("Not Equal\n")
+            fi;
         }
 	};
-    case_check() : Object {
+    str_check() : Object {
+        let ts : String <- "Lololol",
+            ts2 : String <- " Rofl" in
+            {
+                out_string("\nShould be 7: \n");
+                out_int(ts.length());
+                out_string("\nShould be 5: \n");
+                out_int(ts2.length());
+                out_string("\nShould be Lololol Rofl: \n");
+                out_string(ts.concat(ts2));
+                out_string("\nShould be 12: \n");
+                out_int((ts.concat(ts2)).length());
+                out_string("\nShould be 123: \n");
+                out_string("01234".substr(1,3));
+            }
+    };
+    cool_eq_check() : Bool {
+        let a : Dog <- new Dog,
+            b : Dog <- a in
+        a = b
+    };
+    case_check() : String {
         case (new Dog) of
-            d : Dog => "Correct";
+            d : Cat => "Correct";
             d : Main => "Incorrect";
         esac
     };
@@ -56,6 +90,15 @@ class Main inherits IO{
 
 class Dog inherits Main{
     bark() : Object {
+        self@Main.wooooookie()
+    };
+    wooooookie() : Object {
+        "Dog"
+    };
+};
+
+class Cat inherits Main{
+    meow() : Object {
         self@Main.wooooookie()
     };
     wooooookie() : Object {

@@ -1,5 +1,6 @@
 import System.IO
 import System.Environment
+import System.Exit(exitFailure, exitSuccess, exitWith)
 import Debug.Trace
 import Data.List (find, lookup)
 import qualified Data.List as List
@@ -7,6 +8,7 @@ import Data.Map (Map)
 import qualified Data.Map as Map
 import Control.Monad.State
 import Control.Monad (foldM)
+import Control.Monad.Error
 
 type StateWithIO s a = StateT s IO a
 
@@ -84,6 +86,27 @@ data Value = CoolBool Bool
         | Object Type (Map Name Location)
         | Void
         deriving (Show)
+
+data CoolError = Abort
+        | CaseNotMatch String
+        | DispatchOnVoid String
+        | IndexOOR String
+        | Default String
+
+type ThrowsError = Either CoolError
+
+---------------------------- Error Funcs ------------------------------------------
+showError :: CoolError -> String
+showError Abort = "abort\n"
+showError (CaseNotMatch s) = "No matching case in case expr: " ++ s
+showError (DispatchOnVoid s) = "Dispatch on void: " ++ s
+showError (IndexOOR s) = "Index out of range on concat: " ++ s
+
+instance Show CoolError where show = showError
+
+instance Error CoolError where
+    noMsg = Default "An error occurred"
+    strMsg = Default
 
 ---------------------------- Class Map ---------------------------------------------
 parse_cm [] = error "empty input file"
@@ -436,6 +459,7 @@ checkForVoidAndCreateEnv line_no Void formal_locs = error ("ERROR: " ++ (show li
 checkForVoidAndCreateEnv line_no (Object _ obj_map) formal_locs =
     let formal_map = Map.fromList formal_locs
         env2 = Map.union obj_map formal_map in env2
+checkForVoidAndCreateEnv line_no _ formal_locs = Map.fromList formal_locs
 
 checkForVoidAndReturnType :: Int -> Value -> String
 checkForVoidAndReturnType line_no Void = error ("ERROR: " ++ (show line_no) ++ ": Exception: Dispatch on void.")
@@ -488,6 +512,13 @@ eval (cm, im, pm) so env expr =
                     (CoolInt i1, CoolInt i2) ->
                         let tf = i1 == i2 in do
                             return (CoolBool tf)
+                    (CoolString l1 s1, CoolString l2 s2) ->
+                        let tf = s1 == s2 in do
+                            return (CoolBool tf)
+                    (CoolBool b1, CoolBool b2) ->
+                        return (CoolBool (b1 == b2))
+                    (Object t1 om1, Object t2 om2) ->
+                        return (CoolBool (om1 == om2))
                     _ -> error "Comaparing non ints in equals"
             (LessThan line_no typ e1 e2) -> do
                 v1 <- eval' so env e1
@@ -496,7 +527,11 @@ eval (cm, im, pm) so env expr =
                     (CoolInt i1, CoolInt i2) ->
                         let tf = i1 < i2 in do
                             return (CoolBool tf)
-                    _ -> error "Comaparing non ints in less than"
+                    (CoolString _ s1, CoolString _ s2) ->
+                        return (CoolBool (s1 < s2))
+                    (CoolBool b1, CoolBool b2) ->
+                        return (CoolBool (b1 < b2))
+                    _ -> return (CoolBool False)
             (LessEqual line_no typ e1 e2) -> do
                 v1 <- eval' so env e1
                 v2 <- eval' so env e2
@@ -504,7 +539,15 @@ eval (cm, im, pm) so env expr =
                     (CoolInt i1, CoolInt i2) ->
                         let tf = i1 <= i2 in do
                             return (CoolBool tf)
-                    _ -> error "Comaparing non ints in equals"
+                    (CoolString _ s1, CoolString _ s2) ->
+                        return (CoolBool (s1 <= s2))
+                    (CoolBool b1, CoolBool b2) ->
+                        return (CoolBool (b1 <= b2))
+                    (Object t1 om1, Object t2 om2) ->
+                        case om1 == om2 of
+                            True -> return (CoolBool True)
+                            False -> return (CoolBool False)
+                    _ -> return (CoolBool False)
             (Negate line_no typ e1) -> do
                 v1 <- eval' so env e1
                 case v1 of
@@ -667,7 +710,8 @@ eval (cm, im, pm) so env expr =
                         let l0 = newloc s2
                             s3 = Map.insert l0 v0 s2 in do
                                 put s3
-                                eval' so (Map.insert idi l0 env) ei
+                                v1 <- eval' so (Map.insert idi l0 env) ei
+                                return v1
             (Let line_no typ [] e2) -> eval' so env e2
             (Let line_no typ ((LetBinding (Identifier _ name) (Identifier _ t1) e1) : rem_binds) e2) -> do
                 case e1 of
@@ -693,8 +737,9 @@ eval (cm, im, pm) so env expr =
                         s <- get
                         let (Just l) = Map.lookup "x" env
                             (Just (CoolString len str)) = Map.lookup l s
+                            s' = '"' : str ++ "\""
                             in do
-                                out_string so env str
+                                out_string so env (read s')
                     "IO.out_int" -> do
                         s <- get
                         let (Just l) = Map.lookup "x" env
@@ -705,6 +750,30 @@ eval (cm, im, pm) so env expr =
                         in_string so env
                     "IO.in_int" -> do
                         in_int so env
+                    "Object.abort" -> do
+                        abort so env
+                        return Void
+                    "Object.type_name" -> do
+                        type_name so env
+                    "Object.copy" -> do
+                        copy so env
+                    "String.concat" -> do
+                        store <- get
+                        let (Just l) = Map.lookup "s" env
+                            (Just (CoolString len s)) = Map.lookup l store
+                            in do
+                                concool so env s
+                    "String.length" -> do
+                        cool_len so env
+                    "String.substr" -> do
+                        store <- get
+                        let (Just l) = Map.lookup "i" env
+                            (Just (CoolInt i)) = Map.lookup l store
+                            (Just l2) = Map.lookup "l" env
+                            (Just (CoolInt len)) = Map.lookup l2 store
+                            in do
+                                --lift $ putStrLn $ "Index: " ++ (show i) ++ ", Taking: " ++ (show len)
+                                cool_substr so env i len
 
 --data CaseElement = CaseElement NameIdentifier TypeIdentifier Expr deriving(Show)
 --            |   Case LineNo Type Expr [CaseElement]
@@ -723,12 +792,12 @@ eval (cm, im, pm) so env expr =
 out_string :: Value -> Environment -> String -> StateWithIO ProgramState Value
 out_string so env str = do
     -- The lift function allows you to be able to use the IO monad embedded in the state monad
-    lift $ putStrLn str
+    lift $ putStr str
     return (CoolBool True)
 
 out_int :: Value -> Environment -> Int -> StateWithIO ProgramState Value
 out_int so env int = do
-    lift $ putStrLn $ show int
+    lift $ putStr $ show int
     return (CoolBool True)
 
 in_string :: Value -> Environment -> StateWithIO ProgramState Value
@@ -744,8 +813,31 @@ in_int so env = do
 
 abort :: Value -> Environment -> StateWithIO ProgramState Value
 abort so env = do
-    error "abort"
+    lift $ putStrLn "abort"
+    lift $ exitSuccess
 
+type_name :: Value -> Environment -> StateWithIO ProgramState Value
+type_name so env = case so of
+    CoolBool b -> return (CoolString 4 "Bool")
+    CoolInt i -> return (CoolString 3 "Int")
+    CoolString len s -> return (CoolString 5 "String")
+    Object typ _ -> return (CoolString (length typ) typ)
+
+copy :: Value -> Environment -> StateWithIO ProgramState Value
+copy so env = return so
+
+cool_len :: Value -> Environment -> StateWithIO ProgramState Value
+cool_len (CoolString len s) env = return (CoolInt len)
+
+concool :: Value -> Environment -> String -> StateWithIO ProgramState Value
+concool (CoolString len s1) env s2 = let new_str = s1 ++ s2 in
+    return (CoolString (length new_str) new_str)
+
+cool_substr :: Value -> Environment -> Int -> Int -> StateWithIO ProgramState Value
+cool_substr (CoolString len s) env i l
+    | (i <= len && i >= 0) && ( (i + l) <= len && l >= 0) = let substr = take l . drop i $ s in
+        return (CoolString (length substr) substr)
+    | otherwise = error "Substring out of bounds"
 
 -- Main Execution
 main = do
