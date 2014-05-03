@@ -598,8 +598,9 @@ eval (cm, im, pm) so env expr =
                             t -> t
                     (Class name feat_list) = getClass cm t0
                     orig_l = newloc store
-                    ls = [orig_l .. (orig_l + (length feat_list) - 1)]
-                    assoc_l = zip [var | (Attribute var _ _) <- feat_list] ls
+                    ls = [orig_l .. (orig_l + (length feat_list) )]
+                    vars = [var | (Attribute var _ _) <- feat_list]
+                    assoc_l = zip (typ : vars) ls
                     -- assoc_t holds assoc list from var -> type name
                     assoc_t = zip [var | (Attribute var _ _) <- feat_list] [typ | (Attribute _ typ _) <- feat_list]
                     v1 = Object t0 (Map.fromList assoc_l)
