@@ -464,10 +464,17 @@ checkForVoid Void line_no = do
 checkForVoid s _ = return s
 
 
---------- Evaluation ----------------
-eval :: (ClassMap, ImpMap, ParentMap) -> Value -> Environment -> Expr -> StateWithIO ProgramState Value
-eval (cm, im, pm) so env expr =
-    let eval' = eval (cm, im, pm)
+------------- Evaluation ----------------
+eval :: (ClassMap, ImpMap, ParentMap, Int) -> Value -> Environment -> Expr -> StateWithIO ProgramState Value
+eval (cm, im, pm, counter) so env expr =
+    let eval' = eval (cm, im, pm, counter)
+        checkOverflow :: Int -> Int -> StateWithIO ProgramState Value
+        checkOverflow line_no counter =
+            if counter > 1000 then do
+                lift $ putStrLn $ "ERROR: " ++ (show line_no) ++ ": Exception: Stack Overflow"
+                lift $ exitSuccess
+            else do
+                return Void
         threadExprs :: Value -> Environment -> [Expr] -> StateWithIO ProgramState [Value]
         threadExprs so env [] = return []
         threadExprs so env (expr : tl) = do
@@ -591,8 +598,9 @@ eval (cm, im, pm) so env expr =
                             Just v -> v
                             Nothing -> error "Variables should always have a value in IdentExpr" in do
                     return val
-            (New _ typ _) -> do
+            (New line_no typ _) -> do
                 store <- get
+                noworries <- checkOverflow line_no counter
                 let t0 = case typ of
                             "SELF_TYPE" -> let (Object x _) = so in x
                             t -> t
@@ -619,7 +627,7 @@ eval (cm, im, pm) so env expr =
                     iD ln name = Identifier ln name
                     assign_exprs = [Assign 0 t (iD 0 name) e | (Attribute name t (Just e)) <- init_feat_list]
                     env' = Map.fromList assoc_l
-
+                    eval' = eval (cm, im, pm, counter + 1)
                     threadStore :: Value -> Environment -> Expr -> StateWithIO ProgramState Value
                     threadStore so env e = do
                         eval' so env e
@@ -637,6 +645,7 @@ eval (cm, im, pm) so env expr =
                 vals <- threadExprs so env exprs
                 v0 <- eval' so env e0
                 store <- get
+                noworries <- checkOverflow line_no counter
                 unused <- checkForVoid v0 line_no
                 let v0_typ = checkForVoidAndReturnType line_no v0
                     (formals, e_n1) = impMapLookup im v0_typ f
@@ -645,6 +654,7 @@ eval (cm, im, pm) so env expr =
                     assoc_l = zip vals ls
                     store_n3 = foldl (\a (val, li) -> Map.insert li val a) store assoc_l
                     form_ls = zip formals ls
+                    eval' = eval (cm, im, pm, counter + 1)
                     env2 = createEnv line_no v0 form_ls in do
                         put store_n3
                         v_n1 <- eval' v0 env2 e_n1
@@ -652,6 +662,7 @@ eval (cm, im, pm) so env expr =
             (SelfDispatch line_no typ (Identifier _ f) exprs) -> do
                 vals <- threadExprs so env exprs
                 store <- get
+                noworries <- checkOverflow line_no counter
                 unused <- checkForVoid so line_no
                 let so_typ = checkForVoidAndReturnType line_no so
                     (formals, e_n1) = impMapLookup im so_typ f
@@ -660,6 +671,7 @@ eval (cm, im, pm) so env expr =
                     assoc_l = zip vals ls
                     store_n3 = foldl (\a (val, li) -> Map.insert li val a) store assoc_l
                     form_ls = zip formals ls
+                    eval' = eval (cm, im, pm, counter + 1)
                     env2 = createEnv line_no so form_ls in do
                         --lift $ putStrLn "\nPrinting Self Env1:"
                         --lift $ putStr (show env)
@@ -674,6 +686,7 @@ eval (cm, im, pm) so env expr =
                 vals <- threadExprs so env exprs
                 v0 <- eval' so env e0
                 store <- get
+                noworries <- checkOverflow line_no counter
                 unused <- checkForVoid v0 line_no
                 let v0_typ = checkForVoidAndReturnType line_no v0
                     (formals, e_n1) = impMapLookup im name f
@@ -682,6 +695,7 @@ eval (cm, im, pm) so env expr =
                     assoc_l = zip vals ls
                     store_n3 = foldl (\a (val, li) -> Map.insert li val a) store assoc_l
                     form_ls = zip formals ls
+                    eval' = eval (cm, im, pm, counter + 1)
                     env2 = createEnv line_no v0 form_ls in do
                         put store_n3
                         v_n1 <- eval' v0 env2 e_n1
@@ -849,7 +863,10 @@ in_int :: Value -> Environment -> StateWithIO ProgramState Value
 in_int so env = do
     input <- lift $ getLine
     let int = read input :: Int in
-        return (CoolInt int)
+        if int > 2147483647 || int < -2147483648 then do
+            return (CoolInt 0)
+        else do
+            return (CoolInt int)
 
 abort :: Value -> Environment -> StateWithIO ProgramState Value
 abort so env = do
@@ -900,7 +917,7 @@ main = do
             init_state = Map.empty :: Map Location Value
             --(main, store, io) = interpret curried (_null, Map.empty, Map.empty) mainMeth
             in do
-                ret <- (evalStateT (eval (class_map, imp_map, parent_map) _null Map.empty mainMeth) init_state)
+                ret <- (evalStateT (eval (class_map, imp_map, parent_map, 0) _null Map.empty mainMeth) init_state)
                 --putStr $ show ret
                 return ()
                 --io

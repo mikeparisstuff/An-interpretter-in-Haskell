@@ -9,34 +9,35 @@ class Main inherits IO{
             num2 : Int <- num.copy(),
             y : Int <- 5,
             z : String <- "Hello" in
-        -- {
-            out_string("LOLOLOL")
-            -- out_int(y);
-            -- 32 / 0;
-            -- out_int(num);
-            -- num2 <- num2 + 2;
-            -- out_int(num);
-            -- (new Dog).bark();
-            -- self.iftrue();
-            -- self.iffalse();
-            -- wooooookie();
-            -- test_loop();
-            -- out_string("hello");
-            -- out_int(num);
+        {
+            out_string("LOLOLOL");
+            out_int(y);
+            out_int(num);
+            num2 <- num2 + 2;
+            out_int(num);
+            (new Dog).bark();
+            self.iftrue();
+            self.iffalse();
+            wooooookie();
+            test_loop();
+            out_string("hello");
+            out_int(num);
             -- case_check(d);
-            -- out_string((new Dog).type_name());
-            -- out_string(a.type_name());
-            -- str_check();
-            -- doh();
-            -- self.doh();
-            -- (new Main).doh();
-            -- self@Main.doh();
-            -- if cool_eq_check() then
-            --     out_string("Equal\n")
-            -- else
-            --     out_string("Not Equal\n")
-            -- fi;
-        -- }
+            out_string((new Dog).type_name());
+            out_string(a.type_name());
+            str_check();
+            doh();
+            out_string(b.type_name());
+            self.doh();
+            in_string();
+            (new Main).doh();
+            self@Main.doh();
+            if cool_eq_check() then
+                out_string("Equal\n")
+            else
+                out_string("Not Equal\n")
+            fi;
+        }
 	};
     doh() : Int { (let i: Int <- a in { a <- a + 1; i; } ) };
     str_check() : Object {
@@ -52,7 +53,7 @@ class Main inherits IO{
                 out_string("\nShould be 12: \n");
                 out_int((ts.concat(ts2)).length());
                 out_string("\nShould be 123: \n");
-                out_string("01234".substr(1,10));
+                out_string("01234".substr(1,4));
             }
     };
     cool_eq_check() : Bool {
@@ -94,9 +95,13 @@ class Main inherits IO{
         out_string("Printing Some stuff in Main Wookie")
     };
     test_loop() : Object {
-        while a < 10 loop
-            a <- a + 1
-        pool
+        {
+            while a < 100 loop
+                a <- a + 1
+            pool;
+            out_string("A: \n");
+            out_int(a);
+        }
     };
 };
 
