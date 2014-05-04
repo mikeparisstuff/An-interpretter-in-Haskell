@@ -10,6 +10,7 @@ class Main inherits IO{
             y : Int <- 5,
             z : String <- "Hello" in
         {
+            out_int(1234567 * 98765432);
             out_string("LOLOLOL");
             out_int(y);
             out_int(num);
@@ -29,7 +30,6 @@ class Main inherits IO{
             doh();
             out_string(b.type_name());
             self.doh();
-            in_string();
             (new Main).doh();
             self@Main.doh();
             if cool_eq_check() then

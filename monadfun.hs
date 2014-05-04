@@ -9,6 +9,7 @@ import qualified Data.Map as Map
 import Control.Monad.State
 import Control.Monad (foldM)
 import Control.Monad.Error
+import Data.Int
 
 type StateWithIO s a = StateT s IO a
 
@@ -81,7 +82,7 @@ type ProgramState = Store
 
 -- Void algebraic data type for default Void value. Perhaps think about using a maybe for Object only
 data Value = CoolBool Bool
-        | CoolInt Int
+        | CoolInt Int32
         | CoolString Int String
         | Object Type (Map Name Location)
         | Void
@@ -488,7 +489,7 @@ eval (cm, im, pm, counter) so env expr =
             (FalseBool _ _) ->
                 return (CoolBool False)
             (Integer _ typ int_val) ->
-                return (CoolInt int_val)
+                return (CoolInt (fromIntegral int_val :: Int32))
             (Str _ typ str) ->
                 return (CoolString (length str) str)
             (Plus line_no typ e1 e2) -> do
@@ -798,7 +799,7 @@ eval (cm, im, pm, counter) so env expr =
                         let (Just l) = Map.lookup "x" env
                             (Just (CoolInt i)) = Map.lookup l s
                             in do
-                                out_int so env i
+                                out_int so env (fromIntegral i :: Int)
                     "IO.in_string" -> do
                         in_string so env
                     "IO.in_int" -> do
@@ -826,7 +827,7 @@ eval (cm, im, pm, counter) so env expr =
                             (Just (CoolInt len)) = Map.lookup l2 store
                             in do
                                 --lift $ putStrLn $ "Index: " ++ (show i) ++ ", Taking: " ++ (show len)
-                                cool_substr so env i len
+                                cool_substr so env (fromIntegral i :: Int) (fromIntegral len :: Int)
 
 --data CaseElement = CaseElement NameIdentifier TypeIdentifier Expr deriving(Show)
 --            |   Case LineNo Type Expr [CaseElement]
@@ -866,7 +867,7 @@ in_int so env = do
         if int > 2147483647 || int < -2147483648 then do
             return (CoolInt 0)
         else do
-            return (CoolInt int)
+            return (CoolInt (fromIntegral int :: Int32))
 
 abort :: Value -> Environment -> StateWithIO ProgramState Value
 abort so env = do
@@ -884,7 +885,7 @@ copy :: Value -> Environment -> StateWithIO ProgramState Value
 copy so env = return so
 
 cool_len :: Value -> Environment -> StateWithIO ProgramState Value
-cool_len (CoolString len s) env = return (CoolInt len)
+cool_len (CoolString len s) env = return (CoolInt (fromIntegral len :: Int32))
 
 concool :: Value -> Environment -> String -> StateWithIO ProgramState Value
 concool (CoolString len s1) env s2 = let new_str = s1 ++ s2 in
