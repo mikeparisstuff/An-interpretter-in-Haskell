@@ -471,7 +471,7 @@ eval (cm, im, pm, counter) so env expr =
     let eval' = eval (cm, im, pm, counter)
         checkOverflow :: Int -> Int -> StateWithIO ProgramState Value
         checkOverflow line_no counter =
-            if counter > 1000 then do
+            if counter >= 1000 then do
                 lift $ putStrLn $ "ERROR: " ++ (show line_no) ++ ": Exception: Stack Overflow"
                 lift $ exitSuccess
             else do
@@ -726,25 +726,47 @@ eval (cm, im, pm, counter) so env expr =
                 v0 <- eval' so env e0
                 unused <- checkForVoid v0 line_no
                 let types = foldl (\a (CaseElement _ (Identifier _ typ) _) -> typ : a) [] elems
-                    closest_ans :: ParentMap -> String -> [String] -> String
+                    closest_ans :: ParentMap -> String -> [String] -> Maybe String
                     closest_ans pmap typ typs =
                         let parent = case (lookup typ pmap) of
-                                Just p -> p
-                                Nothing -> error "Should always find a parent in parent map" in
-                            case (typ `elem` typs) of
-                                True -> typ
-                                False -> closest_ans pmap parent typs
+                                Just p -> Just p
+                                Nothing -> Nothing
+                            in
+                                case (typ `elem` typs) of
+                                    True -> Just typ
+                                    False -> case parent of
+                                        Just p -> closest_ans pmap p typs
+                                        Nothing -> Nothing
                     ti = closest_ans pm (checkForVoidAndReturnType line_no v0) types
-                    (idi, ei) = case (find (\(CaseElement _ (Identifier _ typ) _) -> typ == ti) elems) of
-                        Just (CaseElement (Identifier _ name) _ expr) -> (name, expr)
-                        Nothing -> error "This should never happen in Case"
                     in do
-                        s2 <- get
-                        let l0 = newloc s2
-                            s3 = Map.insert l0 v0 s2 in do
-                                put s3
-                                v1 <- eval' so (Map.insert idi l0 env) ei
-                                return v1
+                        case ti of
+                            Just ti ->
+                                let (idi, ei) = case (find (\(CaseElement _ (Identifier _ typ) _) -> typ == ti) elems) of
+                                        Just (CaseElement (Identifier _ name) _ expr) -> (name, expr)
+                                        Nothing -> error "This should never happen in Case"
+                                in do
+                                    s2 <- get
+                                    let l0 = newloc s2
+                                        s3 = Map.insert l0 v0 s2 in do
+                                            put s3
+                                            v1 <- eval' so (Map.insert idi l0 env) ei
+                                            return v1
+                            Nothing -> do
+                                lift $ putStrLn $ "ERROR: " ++ (show line_no) ++ ": Exception: case without matching branch"
+                                lift $ exitSuccess
+                                return Void
+
+
+                    --(idi, ei) = case (find (\(CaseElement _ (Identifier _ typ) _) -> typ == ti) elems) of
+                    --    Just (CaseElement (Identifier _ name) _ expr) -> (name, expr)
+                    --    Nothing -> error "This should never happen in Case"
+                    --in do
+                    --    s2 <- get
+                    --    let l0 = newloc s2
+                    --        s3 = Map.insert l0 v0 s2 in do
+                    --            put s3
+                    --            v1 <- eval' so (Map.insert idi l0 env) ei
+                    --            return v1
             (Let line_no typ [] e2) -> do
                 s <- get
                 --lift $ putStrLn "\nLooking at env in let base case:"

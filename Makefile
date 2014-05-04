@@ -17,6 +17,7 @@ run: ${PROGRAM_NAME}
 	./monadfun ${f}.cl-type
 
 build:
+	cp monadfun.hs submission/main.hs
 	zip -r pa5.zip submission
 
 clean:

@@ -9,6 +9,7 @@ import qualified Data.Map as Map
 import Control.Monad.State
 import Control.Monad (foldM)
 import Control.Monad.Error
+import Data.Int
 
 type StateWithIO s a = StateT s IO a
 
@@ -81,7 +82,7 @@ type ProgramState = Store
 
 -- Void algebraic data type for default Void value. Perhaps think about using a maybe for Object only
 data Value = CoolBool Bool
-        | CoolInt Int
+        | CoolInt Int32
         | CoolString Int String
         | Object Type (Map Name Location)
         | Void
@@ -470,7 +471,7 @@ eval (cm, im, pm, counter) so env expr =
     let eval' = eval (cm, im, pm, counter)
         checkOverflow :: Int -> Int -> StateWithIO ProgramState Value
         checkOverflow line_no counter =
-            if counter > 1000 then do
+            if counter >= 1000 then do
                 lift $ putStrLn $ "ERROR: " ++ (show line_no) ++ ": Exception: Stack Overflow"
                 lift $ exitSuccess
             else do
@@ -488,7 +489,7 @@ eval (cm, im, pm, counter) so env expr =
             (FalseBool _ _) ->
                 return (CoolBool False)
             (Integer _ typ int_val) ->
-                return (CoolInt int_val)
+                return (CoolInt (fromIntegral int_val :: Int32))
             (Str _ typ str) ->
                 return (CoolString (length str) str)
             (Plus line_no typ e1 e2) -> do
@@ -725,25 +726,47 @@ eval (cm, im, pm, counter) so env expr =
                 v0 <- eval' so env e0
                 unused <- checkForVoid v0 line_no
                 let types = foldl (\a (CaseElement _ (Identifier _ typ) _) -> typ : a) [] elems
-                    closest_ans :: ParentMap -> String -> [String] -> String
+                    closest_ans :: ParentMap -> String -> [String] -> Maybe String
                     closest_ans pmap typ typs =
                         let parent = case (lookup typ pmap) of
-                                Just p -> p
-                                Nothing -> error "Should always find a parent in parent map" in
-                            case (typ `elem` typs) of
-                                True -> typ
-                                False -> closest_ans pmap parent typs
+                                Just p -> Just p
+                                Nothing -> Nothing
+                            in
+                                case (typ `elem` typs) of
+                                    True -> Just typ
+                                    False -> case parent of
+                                        Just p -> closest_ans pmap p typs
+                                        Nothing -> Nothing
                     ti = closest_ans pm (checkForVoidAndReturnType line_no v0) types
-                    (idi, ei) = case (find (\(CaseElement _ (Identifier _ typ) _) -> typ == ti) elems) of
-                        Just (CaseElement (Identifier _ name) _ expr) -> (name, expr)
-                        Nothing -> error "This should never happen in Case"
                     in do
-                        s2 <- get
-                        let l0 = newloc s2
-                            s3 = Map.insert l0 v0 s2 in do
-                                put s3
-                                v1 <- eval' so (Map.insert idi l0 env) ei
-                                return v1
+                        case ti of
+                            Just ti ->
+                                let (idi, ei) = case (find (\(CaseElement _ (Identifier _ typ) _) -> typ == ti) elems) of
+                                        Just (CaseElement (Identifier _ name) _ expr) -> (name, expr)
+                                        Nothing -> error "This should never happen in Case"
+                                in do
+                                    s2 <- get
+                                    let l0 = newloc s2
+                                        s3 = Map.insert l0 v0 s2 in do
+                                            put s3
+                                            v1 <- eval' so (Map.insert idi l0 env) ei
+                                            return v1
+                            Nothing -> do
+                                lift $ putStrLn $ "ERROR: " ++ (show line_no) ++ ": Exception: case without matching branch"
+                                lift $ exitSuccess
+                                return Void
+
+
+                    --(idi, ei) = case (find (\(CaseElement _ (Identifier _ typ) _) -> typ == ti) elems) of
+                    --    Just (CaseElement (Identifier _ name) _ expr) -> (name, expr)
+                    --    Nothing -> error "This should never happen in Case"
+                    --in do
+                    --    s2 <- get
+                    --    let l0 = newloc s2
+                    --        s3 = Map.insert l0 v0 s2 in do
+                    --            put s3
+                    --            v1 <- eval' so (Map.insert idi l0 env) ei
+                    --            return v1
             (Let line_no typ [] e2) -> do
                 s <- get
                 --lift $ putStrLn "\nLooking at env in let base case:"
@@ -798,7 +821,7 @@ eval (cm, im, pm, counter) so env expr =
                         let (Just l) = Map.lookup "x" env
                             (Just (CoolInt i)) = Map.lookup l s
                             in do
-                                out_int so env i
+                                out_int so env (fromIntegral i :: Int)
                     "IO.in_string" -> do
                         in_string so env
                     "IO.in_int" -> do
@@ -826,7 +849,7 @@ eval (cm, im, pm, counter) so env expr =
                             (Just (CoolInt len)) = Map.lookup l2 store
                             in do
                                 --lift $ putStrLn $ "Index: " ++ (show i) ++ ", Taking: " ++ (show len)
-                                cool_substr so env i len
+                                cool_substr so env (fromIntegral i :: Int) (fromIntegral len :: Int)
 
 --data CaseElement = CaseElement NameIdentifier TypeIdentifier Expr deriving(Show)
 --            |   Case LineNo Type Expr [CaseElement]
@@ -866,7 +889,7 @@ in_int so env = do
         if int > 2147483647 || int < -2147483648 then do
             return (CoolInt 0)
         else do
-            return (CoolInt int)
+            return (CoolInt (fromIntegral int :: Int32))
 
 abort :: Value -> Environment -> StateWithIO ProgramState Value
 abort so env = do
@@ -884,7 +907,7 @@ copy :: Value -> Environment -> StateWithIO ProgramState Value
 copy so env = return so
 
 cool_len :: Value -> Environment -> StateWithIO ProgramState Value
-cool_len (CoolString len s) env = return (CoolInt len)
+cool_len (CoolString len s) env = return (CoolInt (fromIntegral len :: Int32))
 
 concool :: Value -> Environment -> String -> StateWithIO ProgramState Value
 concool (CoolString len s1) env s2 = let new_str = s1 ++ s2 in

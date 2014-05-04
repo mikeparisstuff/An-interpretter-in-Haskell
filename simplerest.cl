@@ -23,7 +23,7 @@ class Main inherits IO{
             test_loop();
             out_string("hello");
             out_int(num);
-            -- case_check(d);
+            case_check(d);
             out_string((new Dog).type_name());
             out_string(a.type_name());
             str_check();
@@ -32,6 +32,9 @@ class Main inherits IO{
             self.doh();
             (new Main).doh();
             self@Main.doh();
+            check_obj_compares();
+            check_math();
+            check_is_void();
             if cool_eq_check() then
                 out_string("Equal\n")
             else
@@ -61,21 +64,48 @@ class Main inherits IO{
             b : Dog <- a in
         a = b
     };
-    case_check(o : Dog) : String {
-        case o of
-            d : Cat => "Correct";
-            d : Main => "Incorrect";
-        esac
+    case_check(o : Dog) : Object {
+        let a : Dog <- new Dog in
+        {
+            case a of
+                d : Cat => out_string("Cat Case\n");
+                d : Main => out_string("Main Case\n");
+                d : Dog => out_string("Dog Case\n");
+            esac;
+
+            case a of
+                d : Cat => out_string("Cat Case\n");
+                d : Main => out_string("Main Case\n");
+            esac;
+
+            case new Int of
+                d : Cat => out_string("Cat Case\n");
+                d : Main => out_string("Main Case\n");
+            esac;
+        }
     };
     let_check() : Object {
         let test : Int <- 2,
             test2 : String <- "Hello",
             test3 : String,
-            test4 : Dog in test4
+            test4 : Dog <- new Dog in {
+                out_string(test2);
+                test4.bark();
+                out_string(test4@Main.wooooookie());
+                out_string(test4.wooooookie());
+            }
     };
-    wooooookie() : Object {
+    wooooookie() : String {
         --(a * b + 2) * 10 + c + b
         "Main"
+    };
+    check_is_void() : Object {
+        let a : Dog,
+            b : Dog <- new Dog in
+            {
+                if isvoid(a) then out_string("a is void\n") else out_string("a is not void\n") fi;
+                if isvoid(b) then out_string("b is void\n") else out_string("b is not void\n") fi;
+            }
     };
     iftrue() : Object {
         if 10 <= 10 then
@@ -103,13 +133,36 @@ class Main inherits IO{
             out_int(a);
         }
     };
+    check_math() : Object {
+        {
+            if not true then out_string("Not True\n") else out_string("Totally True\n") fi;
+            out_int(~5);
+            out_int( 3 * 2 + 4 - 9 / 3);
+            out_int(98765432*9876543);
+        }
+    };
+    check_obj_compares() : Object {
+        let a : Dog <- new Dog,
+            b : Cat <- new Cat,
+            c : Dog <- a in
+            {
+                    if a = b then out_string("A = B True\n") else out_string("A = B False\n") fi;
+                    if a = a then out_string("A = A True\n") else out_string("A = A False\n") fi;
+                    if a = c then out_string("A = C True\n") else out_string("A = C False\n") fi;
+                    if a < b then out_string("A < B True\n") else out_string("A < B False\n") fi;
+                    if c < b then out_string("C < A True\n") else out_string("C < A False\n") fi;
+                    if a <= a then out_string("A <= A True\n") else out_string("A <= A False\n") fi;
+                    if c <= a then out_string("C <= A True\n") else out_string("C <= A False\n") fi;
+                    if b <= a then out_string("B <= A True\n") else out_string("B <= A False\n") fi;
+            }
+    };
 };
 
 class Dog inherits Main{
     bark() : Object {
         self@Main.wooooookie()
     };
-    wooooookie() : Object {
+    wooooookie() : String {
         "Dog"
     };
 };
@@ -118,7 +171,7 @@ class Cat inherits Main{
     meow() : Object {
         self@Main.wooooookie()
     };
-    wooooookie() : Object {
-        "Dog"
+    wooooookie() : String {
+        "Cat"
     };
 };
