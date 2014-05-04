@@ -603,6 +603,11 @@ eval (cm, im, pm, counter) so env expr =
             (New line_no typ _) -> do
                 store <- get
                 noworries <- checkOverflow line_no counter
+                lift $ putStrLn "--New gogogo!--"
+                lift $ putStrLn $ show line_no
+                lift $ putStrLn $ show typ
+                lift $ putStrLn $ show so
+                --lift $ putStrLn $ show store
                 let t0 = case typ of
                             "SELF_TYPE" -> let (Object x _) = so in x
                             t -> t
@@ -934,6 +939,7 @@ copy_primitives store ((n, old_l) : tl) =
 
 copy :: Value -> Store -> StateWithIO ProgramState Value
 copy so store = do
+     lift $ putStrLn $ show store
      case so of 
         Object typ objMap -> 
                  let (store1, newOM) = copy_primitives store $ Map.assocs objMap 
@@ -942,6 +948,7 @@ copy so store = do
                      store2 = Map.insert newId Void store1
                  in do
              put store2 
+             lift $ putStrLn $ show store2
              return $ Object typ newnewOM
         everythang_else -> 
              return everythang_else
