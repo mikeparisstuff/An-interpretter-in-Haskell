@@ -10,6 +10,9 @@ class Main inherits IO{
             y : Int <- 5,
             z : String <- "Hello" in
         {
+            out_string("Enter a number: ");
+            in_int();
+            out_string("\n");
             out_int(1234567 * 98765432);
             out_string("LOLOLOL");
             out_int(y);

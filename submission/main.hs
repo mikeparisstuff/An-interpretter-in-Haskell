@@ -885,11 +885,13 @@ in_string so env = do
 in_int :: Value -> Environment -> StateWithIO ProgramState Value
 in_int so env = do
     input <- lift $ getLine
-    let int = read input :: Int in
-        if int > 2147483647 || int < -2147483648 then do
-            return (CoolInt 0)
-        else do
-            return (CoolInt (fromIntegral int :: Int32))
+    let int = case reads input :: [(Integer, String)] of
+            [(n, _)] -> n
+            _ -> 0 in
+            if int > 2147483647 || int < -2147483648 then do
+                return (CoolInt 0)
+            else do
+                return (CoolInt (fromIntegral int :: Int32))
 
 abort :: Value -> Environment -> StateWithIO ProgramState Value
 abort so env = do
