@@ -6,6 +6,7 @@ import Data.List (find, lookup)
 import qualified Data.List as List
 import Data.Map (Map)
 import qualified Data.Map as Map
+import Control.Exception (try, SomeException)
 import Control.Monad.State
 import Control.Monad (foldM)
 import Control.Monad.Error
@@ -471,7 +472,7 @@ eval (cm, im, pm, counter) so env expr =
     let eval' = eval (cm, im, pm, counter)
         checkOverflow :: Int -> Int -> StateWithIO ProgramState Value
         checkOverflow line_no counter =
-            if counter >= 1000 then do
+            if counter + 1 >= 1000 then do
                 lift $ putStrLn $ "ERROR: " ++ (show line_no) ++ ": Exception: Stack Overflow"
                 lift $ exitSuccess
             else do
@@ -609,7 +610,7 @@ eval (cm, im, pm, counter) so env expr =
                     orig_l = newloc store
                     ls = [orig_l .. (orig_l + (length feat_list) )]
                     vars = [var | (Attribute var _ _) <- feat_list]
-                    assoc_l = zip (typ : vars) ls
+                    assoc_l = zip (typ : vars) ls 
                     -- assoc_t holds assoc list from var -> type name
                     assoc_t = zip [var | (Attribute var _ _) <- feat_list] [typ | (Attribute _ typ _) <- feat_list]
                     v1 = Object t0 (Map.fromList assoc_l)
@@ -832,7 +833,8 @@ eval (cm, im, pm, counter) so env expr =
                     "Object.type_name" -> do
                         type_name so env
                     "Object.copy" -> do
-                        copy so env
+                        store <- get
+                        copy so store
                     "String.concat" -> do
                         store <- get
                         let (Just l) = Map.lookup "s" env
@@ -879,13 +881,21 @@ out_int so env int = do
 
 in_string :: Value -> Environment -> StateWithIO ProgramState Value
 in_string so env = do
-    input <- lift $ getLine
+    either_i <- lift $ (try getLine :: IO (Either SomeException String))
+    let n_input = case either_i of
+            (Left someExcept) -> ""
+            (Right str)       -> str
+        input = if elem '\NUL' n_input then "" 
+                else n_input  
     return (CoolString (length input) input)
 
 in_int :: Value -> Environment -> StateWithIO ProgramState Value
 in_int so env = do
-    input <- lift $ getLine
-    let int = case reads input :: [(Integer, String)] of
+    either_i <- lift $ (try getLine :: IO (Either SomeException String)) 
+    let input = case either_i of
+            (Left someExcept) -> "0"
+            (Right str)       -> str
+        int = case reads input :: [(Integer, String)] of
             [(n, _)] -> n
             _ -> 0 in
             if int > 2147483647 || int < -2147483648 then do
@@ -905,8 +915,36 @@ type_name so env = case so of
     CoolString len s -> return (CoolString 5 "String")
     Object typ _ -> return (CoolString (length typ) typ)
 
-copy :: Value -> Environment -> StateWithIO ProgramState Value
-copy so env = return so
+copy_primitives :: Store -> [(Name, Location)] -> (Store, [(Name, Location)])
+copy_primitives store [] = (store, [])
+copy_primitives store ((n, old_l) : tl) =
+    let (Just val) = Map.lookup old_l store in
+    case val of 
+            Object _ _ -> 
+                let (store1, ret_tl) = copy_primitives store tl 
+                    tup = (n, old_l) 
+                    in
+                (store1, (tup : ret_tl))
+            _ ->
+                let newl = newloc store
+                    tup = (n, newl) 
+                    store1 = Map.insert newl val store
+                    (store2, ret_tl) = copy_primitives store1 tl in
+                (store2, (tup : ret_tl))
+
+copy :: Value -> Store -> StateWithIO ProgramState Value
+copy so store = do
+     case so of 
+        Object typ objMap -> 
+                 let (store1, newOM) = copy_primitives store $ Map.assocs objMap 
+                     newId = newloc store1
+                     newnewOM = Map.insert typ newId (Map.fromList newOM)
+                     store2 = Map.insert newId Void store1
+                 in do
+             put store2 
+             return $ Object typ newnewOM
+        everythang_else -> 
+             return everythang_else
 
 cool_len :: Value -> Environment -> StateWithIO ProgramState Value
 cool_len (CoolString len s) env = return (CoolInt (fromIntegral len :: Int32))
