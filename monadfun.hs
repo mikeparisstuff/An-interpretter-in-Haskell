@@ -12,8 +12,11 @@ import Control.Monad (foldM)
 import Control.Monad.Error
 import Data.Int
 
+
+-- This State Transformer holds the magic that makes this program run. It abstracts away the IO monad and combines it with the State Monad that holds our store.
 type StateWithIO s a = StateT s IO a
 
+-- Helper type declarations for readability
 type Type = String
 type Name = String
 type FormalName = String
@@ -26,7 +29,7 @@ type NameIdentifier = Identifier
 type Child = String
 type Parent = String
 
-
+-- The main structure of our parsing and interpretting logic
 data Class = Class String [Feature]
         |   AstClass LineNo String [Feature] (Maybe TypeIdentifier) deriving(Show)
 data Feature = Attribute Name Type (Maybe Expr)
@@ -89,11 +92,6 @@ data Value = CoolBool Bool
         | Void
         deriving (Show)
 
-data CoolError = Abort
-        | CaseNotMatch String
-        | DispatchOnVoid String
-        | IndexOOR String
-        | Default String
 
 ---------------------------- Class Map ---------------------------------------------
 parse_cm [] = error "empty input file"
@@ -221,7 +219,7 @@ parse_formal_identifiers n (line_no : fname : type_line_no : type_name : tl) =
         (formals, rem_lines) = parse_formal_identifiers (n-1) tl
     in ( (Formal (Identifier ln fname) (Identifier tln type_name)) : formals, rem_lines)
 
------------------------- Expressions -------------------------------------------------
+------------------------ Parse Expressions -------------------------------------------------
 
 parse_expr xs = case xs of
     -- Integer, String, and Bool
@@ -401,14 +399,16 @@ parse_identifier (line_no : name : tl) =
 ------------------------------- Interpreter Functions ---------------------------------
 
 --------- Helper Functions ---------------
+
+-- Lookup a method in the implementation map given a class and method name
 impMapLookup :: ImpMap -> String -> String -> ([String], Expr)
 impMapLookup imp_map class_name f =
     let (Just (Class name feats)) = find (\(Class name _) -> name == class_name) imp_map
         (Just (Method _ formals _ expr)) = find (\(Method name _ _ _) -> name == f) feats
         in
         (formals, expr)
-        --trace ("Looking for class with name: " ++ class_name) (trace ("Looking for method with name: " ++ f) (formals, expr))
 
+-- Extract a class our of the class map
 getClass :: ClassMap -> String -> Class
 getClass class_map name =
     let (Just clas) = find (\(Class cname _) -> cname == name) class_map in
@@ -419,15 +419,17 @@ newloc :: Store -> Int
 newloc store =
     Map.size store
 
--- Find the location given a variable name
+-- Given a variable name find its location in the store
 envLookup :: Environment -> String -> Maybe Int
 envLookup env name =
     Map.lookup name env
 
+-- Given a location find the value in the store
 storeLookup :: Store -> Int -> Maybe Value
 storeLookup store loc =
     Map.lookup loc store
 
+-- Assign the default value for the given type
 default_value :: String -> Value
 default_value typ = case typ of
     "Int" -> CoolInt 0
@@ -435,12 +437,14 @@ default_value typ = case typ of
     "Bool" -> CoolBool False
     _     -> Void
 
+-- Helper to create the new environment in dispatch expressions
 createEnv :: Int -> Value -> [(String, Int)] -> Environment
 createEnv line_no (Object _ obj_map) formal_locs =
     let formal_map = Map.fromList formal_locs
         env2 = Map.union formal_map obj_map in env2
 createEnv line_no _ formal_locs = Map.fromList formal_locs
 
+-- Helper function to extract the type of a value
 checkForVoidAndReturnType :: Int -> Value -> String
 checkForVoidAndReturnType line_no Void = error ("ERROR: " ++ (show line_no) ++ ": Exception: dispatch on void")
 checkForVoidAndReturnType line_no (Object typ _) = typ
@@ -448,7 +452,7 @@ checkForVoidAndReturnType line_no (CoolString _ _) = "String"
 checkForVoidAndReturnType line_no (CoolInt _) = "Int"
 checkForVoidAndReturnType line_no (CoolBool _) = "Bool"
 
-
+-- Check for void for dispatch and case expressions on void
 checkForVoid :: Value -> Int -> StateWithIO ProgramState Value
 checkForVoid Void line_no = do
         lift $ putStrLn $ "ERROR: " ++ (show line_no) ++ ": Exception: Case or Dispatch on void."
@@ -457,6 +461,8 @@ checkForVoid s _ = return s
 
 
 ------------- Evaluation ----------------
+-- Reasonably straight forward. The state of the program is carried throughout this function via the StateTransformer.
+-- These rules follows those presented in the operational semantics as precisely as possible and evaluate every cool expression.
 eval :: (ClassMap, ImpMap, ParentMap, Int) -> Value -> Environment -> Expr -> StateWithIO ProgramState Value
 eval (cm, im, pm, counter) so env expr =
     let eval' = eval (cm, im, pm, counter)
@@ -799,7 +805,8 @@ eval (cm, im, pm, counter) so env expr =
                             in do
                                 cool_substr so env (fromIntegral i :: Int) (fromIntegral len :: Int)
 
-
+-- The below methods handle the runtime environment that cool supplies to the programmers.
+-- These calls deal with IO, copying, aborting, and string manipulation
 out_string :: Value -> Environment -> String -> StateWithIO ProgramState Value
 out_string so env str = do
     -- The lift function allows you to be able to use the IO monad embedded in the state monad
@@ -894,7 +901,7 @@ cool_substr (CoolString len s) env i l
         lift $ exitSuccess
 
 
--- Main Execution
+-- Main Execution.. Parse cl-type file and run (new Main).main()
 main = do
     args <- getArgs
     if length args == 0 then
@@ -907,24 +914,8 @@ main = do
             _null = Object "NULL" Map.empty
             newM = New 0 "Main" (Identifier 0 "")
             mainMeth = DynamicDispatch 0 "Object" newM (Identifier 0 "main") []
-            --mainMeth = Plus 0 "Int" (Integer 0 "Int" 5) (Plus 0 "Int" (Integer 0 "Int" 5) (Integer 0 "Int" 10))
             curried = (class_map, imp_map, parent_map)
             init_state = Map.empty :: Map Location Value
-            --(main, store, io) = interpret curried (_null, Map.empty, Map.empty) mainMeth
             in do
                 ret <- (evalStateT (eval (class_map, imp_map, parent_map, 0) _null Map.empty mainMeth) init_state)
-                --putStr $ show ret
                 return ()
-                --io
-                --putStrLn $ show $ main
-            -- dispatch =
-            -- res = interpret curried (main, store, main) dispatch
-            --putStrLn $ show $ class_map
-            -- multiple putstrlns do not work for whatever reason
-                --putStrLn "\nImplementation Map:"
-                --putStrLn $ show $ imp_map
-                --putStrLn "\nParent Map:"
-                --putStrLn $ show $ parent_map
-            --putStrLn "\nAnnotated AST:"
-            --putStrLn $ show $ ast
-            --putStrLn "\nExecution:"
