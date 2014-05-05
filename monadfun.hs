@@ -603,10 +603,10 @@ eval (cm, im, pm, counter) so env expr =
             (New line_no typ _) -> do
                 store <- get
                 noworries <- checkOverflow line_no counter
-                lift $ putStrLn "--New gogogo!--"
-                lift $ putStrLn $ show line_no
-                lift $ putStrLn $ show typ
-                lift $ putStrLn $ show so
+                --lift $ putStrLn "--New gogogo!--"
+                --lift $ putStrLn $ show line_no
+                --lift $ putStrLn $ show typ
+                --lift $ putStrLn $ show so
                 --lift $ putStrLn $ show store
                 let t0 = case typ of
                             "SELF_TYPE" -> let (Object x _) = so in x
@@ -615,7 +615,7 @@ eval (cm, im, pm, counter) so env expr =
                     orig_l = newloc store
                     ls = [orig_l .. (orig_l + (length feat_list) )]
                     vars = [var | (Attribute var _ _) <- feat_list]
-                    assoc_l = zip (typ : vars) ls 
+                    assoc_l = zip (typ : vars) ls
                     -- assoc_t holds assoc list from var -> type name
                     assoc_t = zip [var | (Attribute var _ _) <- feat_list] [typ | (Attribute _ typ _) <- feat_list]
                     v1 = Object t0 (Map.fromList assoc_l)
@@ -838,8 +838,7 @@ eval (cm, im, pm, counter) so env expr =
                     "Object.type_name" -> do
                         type_name so env
                     "Object.copy" -> do
-                        store <- get
-                        copy so store
+                        copy so env
                     "String.concat" -> do
                         store <- get
                         let (Just l) = Map.lookup "s" env
@@ -890,13 +889,13 @@ in_string so env = do
     let n_input = case either_i of
             (Left someExcept) -> ""
             (Right str)       -> str
-        input = if elem '\NUL' n_input then "" 
-                else n_input  
+        input = if elem '\NUL' n_input then ""
+                else n_input
     return (CoolString (length input) input)
 
 in_int :: Value -> Environment -> StateWithIO ProgramState Value
 in_int so env = do
-    either_i <- lift $ (try getLine :: IO (Either SomeException String)) 
+    either_i <- lift $ (try getLine :: IO (Either SomeException String))
     let input = case either_i of
             (Left someExcept) -> "0"
             (Right str)       -> str
@@ -920,38 +919,68 @@ type_name so env = case so of
     CoolString len s -> return (CoolString 5 "String")
     Object typ _ -> return (CoolString (length typ) typ)
 
-copy_primitives :: Store -> [(Name, Location)] -> (Store, [(Name, Location)])
-copy_primitives store [] = (store, [])
-copy_primitives store ((n, old_l) : tl) =
-    let (Just val) = Map.lookup old_l store in
-    case val of 
-            Object _ _ -> 
-                let (store1, ret_tl) = copy_primitives store tl 
-                    tup = (n, old_l) 
-                    in
-                (store1, (tup : ret_tl))
-            _ ->
-                let newl = newloc store
-                    tup = (n, newl) 
-                    store1 = Map.insert newl val store
-                    (store2, ret_tl) = copy_primitives store1 tl in
-                (store2, (tup : ret_tl))
+--copy_primitives :: Store -> [(Name, Location)] -> (Store, [(Name, Location)])
+--copy_primitives store [] = (store, [])
+--copy_primitives store ((n, old_l) : tl) =
+--    let (Just val) = Map.lookup old_l store in
+--    case val of
+--            Object _ _ ->
+--                let (store1, ret_tl) = copy_primitives store tl
+--                    tup = (n, old_l)
+--                    in
+--                (store1, (tup : ret_tl))
+--            _ ->
+--                let newl = newloc store
+--                    tup = (n, newl)
+--                    store1 = Map.insert newl val store
+--                    (store2, ret_tl) = copy_primitives store1 tl in
+--                (store2, (tup : ret_tl))
 
-copy :: Value -> Store -> StateWithIO ProgramState Value
-copy so store = do
-     lift $ putStrLn $ show store
-     case so of 
-        Object typ objMap -> 
-                 let (store1, newOM) = copy_primitives store $ Map.assocs objMap 
-                     newId = newloc store1
-                     newnewOM = Map.insert typ newId (Map.fromList newOM)
-                     store2 = Map.insert newId Void store1
-                 in do
-             put store2 
-             lift $ putStrLn $ show store2
-             return $ Object typ newnewOM
-        everythang_else -> 
-             return everythang_else
+--copy :: Value -> Store -> StateWithIO ProgramState Value
+--copy so store = do
+--     lift $ putStrLn $ show store
+--     case so of
+--        Object typ objMap ->
+--                 let (store1, newOM) = copy_primitives store $ Map.assocs objMap
+--                     newId = newloc store1
+--                     newnewOM = Map.insert typ newId (Map.fromList newOM)
+--                     store2 = Map.insert newId Void store1
+--                 in do
+--             put store2
+--             lift $ putStrLn $ show store2
+--             return $ Object typ newnewOM
+--        everythang_else ->
+--             return everythang_else
+
+extractVals :: Store -> [(Name, Int)] -> [Value]
+extractVals store [] = []
+extractVals store ( (var, loc) : tl) =
+    let new_vals = extractVals store tl
+        -- Get the old value held in the store
+        (Just val) = Map.lookup loc store
+        in
+            (val : new_vals)
+
+copy :: Value -> Environment -> StateWithIO ProgramState Value
+copy so env = do
+    store <- get
+    case so of
+        Object typ om ->
+            let orig_l = newloc store
+                new_locs = [orig_l .. (orig_l + (Map.size om))]
+                old_key_locs = Map.assocs om
+                names = [ name | (name, _) <- old_key_locs]
+                vals = extractVals store old_key_locs
+                -- has type (new_loc, value)
+                new_loc_vals = zip new_locs vals
+                -- Populate the store with our new copied data
+                store2 = foldl (\a (loc, val) -> Map.insert loc val a) store new_loc_vals
+                -- Create the new objMap with the new locs and names
+                new_name_locs = zip names new_locs
+                new_om = Map.fromList new_name_locs in do
+                    put store2
+                    return (Object typ new_om)
+        other -> return other
 
 cool_len :: Value -> Environment -> StateWithIO ProgramState Value
 cool_len (CoolString len s) env = return (CoolInt (fromIntegral len :: Int32))

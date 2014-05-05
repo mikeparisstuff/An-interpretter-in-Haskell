@@ -81,10 +81,10 @@ class Main inherits IO{
                 d : Main => out_string("Main Case\n");
             esac;
 
-            case new Int of
-                d : Cat => out_string("Cat Case\n");
-                d : Main => out_string("Main Case\n");
-            esac;
+            -- case new Int of
+            --     d : Cat => out_string("Cat Case\n");
+            --     d : Main => out_string("Main Case\n");
+            -- esac;
         }
     };
     let_check() : Object {
