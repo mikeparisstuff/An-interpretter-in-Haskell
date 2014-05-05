@@ -95,10 +95,6 @@ data CoolError = Abort
         | IndexOOR String
         | Default String
 
-type ThrowsError = Either CoolError
-
----------------------------- Error Funcs ------------------------------------------
---
 ---------------------------- Class Map ---------------------------------------------
 parse_cm [] = error "empty input file"
 parse_cm ("class_map": num_classes : tl) =
@@ -368,12 +364,6 @@ parse_expr xs = case xs of
             --(expr, rem_input) = parse_expr tl
             (case_elems, rem_input_3) = parse_case_elements ne rem_input_2
         in ( (Case ln expr_type expr case_elems), rem_input_3)
-    --(line_no : expr_type : "case" : num_elems : tl) ->
-    --    let ln = read line_no :: Int
-    --        ne = read num_elems :: Int
-    --        (expr, rem_input) = parse_expr tl
-    --        (case_elems, rem_input_2) = parse_case_elements ne rem_input
-    --    in ( (Case ln expr_type expr case_elems), rem_input_2)
     _ -> error "could not match expr"
 
 parse_case_elements 0 tl = ([], tl)
@@ -526,10 +516,6 @@ eval (cm, im, pm, counter) so env expr =
                     (CoolBool b1, CoolBool b2) ->
                         return (CoolBool (b1 == b2))
                     (Object t1 om1, Object t2 om2) -> do
-                        --lift $ putStrLn "\nom1: "
-                        --lift $ putStrLn (show om1)
-                        --lift $ putStrLn "\nom2: "
-                        --lift $ putStrLn (show om2)
                         return (CoolBool (om1 == om2))
                     (Void, Void) ->
                         return (CoolBool True)
@@ -603,11 +589,6 @@ eval (cm, im, pm, counter) so env expr =
             (New line_no typ _) -> do
                 store <- get
                 noworries <- checkOverflow line_no counter
-                --lift $ putStrLn "--New gogogo!--"
-                --lift $ putStrLn $ show line_no
-                --lift $ putStrLn $ show typ
-                --lift $ putStrLn $ show so
-                --lift $ putStrLn $ show store
                 let t0 = case typ of
                             "SELF_TYPE" -> let (Object x _) = so in x
                             t -> t
@@ -638,15 +619,12 @@ eval (cm, im, pm, counter) so env expr =
                     threadStore :: Value -> Environment -> Expr -> StateWithIO ProgramState Value
                     threadStore so env e = do
                         eval' so env e
-                        --return (acc ++ [v])
                     threadStore' = threadStore v1 env'
                     in do
                         put store2
                         vs <- mapM (threadStore') assign_exprs
                         s <- get
                         let Just val = storeLookup s 1 in do
-                            --lift $ putStrLn $ "Value of b: " ++ show val
-                            --lift $ putStrLn $ show vs
                             return v1
             (DynamicDispatch line_no typ e0 (Identifier _ f) exprs) -> do
                 vals <- threadExprs so env exprs
@@ -680,12 +658,6 @@ eval (cm, im, pm, counter) so env expr =
                     form_ls = zip formals ls
                     eval' = eval (cm, im, pm, counter + 1)
                     env2 = createEnv line_no so form_ls in do
-                        --lift $ putStrLn "\nPrinting Self Env1:"
-                        --lift $ putStr (show env)
-                        --lift $ putStrLn "\nPrinting Self Env2:"
-                        --lift $ putStr (show env2)
-                        --lift $ putStrLn "\nLooking at store in dispatch: "
-                        --lift $ putStrLn (show store_n3)
                         put store_n3
                         v_n1 <- eval' so env2 e_n1
                         return v_n1
@@ -761,25 +733,8 @@ eval (cm, im, pm, counter) so env expr =
                                 lift $ putStrLn $ "ERROR: " ++ (show line_no) ++ ": Exception: case without matching branch"
                                 lift $ exitSuccess
                                 return Void
-
-
-                    --(idi, ei) = case (find (\(CaseElement _ (Identifier _ typ) _) -> typ == ti) elems) of
-                    --    Just (CaseElement (Identifier _ name) _ expr) -> (name, expr)
-                    --    Nothing -> error "This should never happen in Case"
-                    --in do
-                    --    s2 <- get
-                    --    let l0 = newloc s2
-                    --        s3 = Map.insert l0 v0 s2 in do
-                    --            put s3
-                    --            v1 <- eval' so (Map.insert idi l0 env) ei
-                    --            return v1
             (Let line_no typ [] e2) -> do
                 s <- get
-                --lift $ putStrLn "\nLooking at env in let base case:"
-                --lift $ putStrLn (show env)
-                --lift $ putStrLn "Looking at store in let base case:"
-                --lift $ putStrLn (show s)
-                --lift $ putStrLn $ "Evaluating expression: " ++ (show e2)
                 eval' so env e2
             (Let line_no typ ((LetBinding (Identifier _ name) (Identifier _ t1) e1) : rem_binds) e2) -> do
                 case e1 of
@@ -790,10 +745,6 @@ eval (cm, im, pm, counter) so env expr =
                             s3 = Map.insert l1 v1 s2
                             env2 = Map.insert name l1 env
                             in do
-                                --lift $ putStrLn "\nLooking at env in expr let:"
-                                --lift $ putStrLn (show env2)
-                                --lift $ putStrLn "Looking at store in expr let:"
-                                --lift $ putStrLn (show s3)
                                 put s3
                                 eval' so env2 (Let line_no typ rem_binds e2)
                     Nothing -> do
@@ -803,10 +754,6 @@ eval (cm, im, pm, counter) so env expr =
                             s3 = Map.insert l1 v1 s2
                             env2 = Map.insert name l1 env
                             in do
-                                --lift $ putStrLn "\nLooking at env in non-expr let:"
-                                --lift $ putStrLn (show env2)
-                                --lift $ putStrLn "Looking at store in non-expr let:"
-                                --lift $ putStrLn (show s3)
                                 put s3
                                 eval' so env2 (Let line_no typ rem_binds e2)
             (Internal line_no typ name) -> do
@@ -817,10 +764,6 @@ eval (cm, im, pm, counter) so env expr =
                             (Just (CoolString len str)) = Map.lookup l s
                             s' = '"' : str ++ "\""
                             in do
-                                --lift $ putStrLn "\nLooking at env in out_string: "
-                                --lift $ putStrLn (show env)
-                                --lift $ putStrLn "\nLooking at store in out_string: "
-                                --lift $ putStrLn (show s)
                                 out_string so env (read s')
                     "IO.out_int" -> do
                         s <- get
@@ -854,21 +797,7 @@ eval (cm, im, pm, counter) so env expr =
                             (Just l2) = Map.lookup "l" env
                             (Just (CoolInt len)) = Map.lookup l2 store
                             in do
-                                --lift $ putStrLn $ "Index: " ++ (show i) ++ ", Taking: " ++ (show len)
                                 cool_substr so env (fromIntegral i :: Int) (fromIntegral len :: Int)
-
---data CaseElement = CaseElement NameIdentifier TypeIdentifier Expr deriving(Show)
---            |   Case LineNo Type Expr [CaseElement]
-            --(Let line_no typ (bind : rem_binds) e2) -> do
--- Old way of trying this but it compiles.
---threadStore so env acc e = do
---    v <- eval' so env e
---    return (acc ++ [v])
---threadStore' = threadStore v1 env'
---in do
---    vs <- foldM (threadStore') [] assign_exprs
---    lift $ putStrLn $ show vs
---    return v1
 
 
 out_string :: Value -> Environment -> String -> StateWithIO ProgramState Value
@@ -918,39 +847,6 @@ type_name so env = case so of
     CoolInt i -> return (CoolString 3 "Int")
     CoolString len s -> return (CoolString 5 "String")
     Object typ _ -> return (CoolString (length typ) typ)
-
---copy_primitives :: Store -> [(Name, Location)] -> (Store, [(Name, Location)])
---copy_primitives store [] = (store, [])
---copy_primitives store ((n, old_l) : tl) =
---    let (Just val) = Map.lookup old_l store in
---    case val of
---            Object _ _ ->
---                let (store1, ret_tl) = copy_primitives store tl
---                    tup = (n, old_l)
---                    in
---                (store1, (tup : ret_tl))
---            _ ->
---                let newl = newloc store
---                    tup = (n, newl)
---                    store1 = Map.insert newl val store
---                    (store2, ret_tl) = copy_primitives store1 tl in
---                (store2, (tup : ret_tl))
-
---copy :: Value -> Store -> StateWithIO ProgramState Value
---copy so store = do
---     lift $ putStrLn $ show store
---     case so of
---        Object typ objMap ->
---                 let (store1, newOM) = copy_primitives store $ Map.assocs objMap
---                     newId = newloc store1
---                     newnewOM = Map.insert typ newId (Map.fromList newOM)
---                     store2 = Map.insert newId Void store1
---                 in do
---             put store2
---             lift $ putStrLn $ show store2
---             return $ Object typ newnewOM
---        everythang_else ->
---             return everythang_else
 
 extractVals :: Store -> [(Name, Int)] -> [Value]
 extractVals store [] = []
